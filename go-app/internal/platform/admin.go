@@ -19,6 +19,9 @@ var adminSamples = []metrics.Sample{
 	{Name: "/memory/classes/heap/objects:bytes"},
 	{Name: "/memory/classes/total:bytes"},
 	{Name: "/gc/pauses:seconds"},
+	{Name: "/gc/gogc:percent"},
+	{Name: "/gc/gomemlimit:bytes"},
+	{Name: "/sched/gomaxprocs:threads"},
 }
 
 // NewAdminHandler mengekspos runtime/metrics (+ konfigurasi runtime dan statistik pool) di port admin.

@@ -1,0 +1,28 @@
+# Flavor alpine (musl): binary dari Static Linux SDK (swift-6.4.0-RELEASE_static-linux-0.1.0) -> runtime Alpine, non-root.
+# LABEL musl: alokator memori musl berbeda dari glibc (malloc musl lebih sederhana/lebih lambat di beban multi-thread dan bisa
+# memengaruhi performa dan memori); hasil flavor ini TIDAK sebanding langsung dengan flavor distroless (glibc).
+# --build-system native: lihat catatan di Dockerfile (Swift Build default gagal link statis di Linux pada 6.4).
+ARG SWIFT_BUILD_IMAGE
+ARG RUNTIME_IMAGE
+FROM ${SWIFT_BUILD_IMAGE} AS build
+RUN swift sdk install \
+    https://download.swift.org/swift-6.4.0-release/static-sdk/swift-6.4.0-RELEASE/swift-6.4.0-RELEASE_static-linux-0.1.0.artifactbundle.tar.gz \
+    --checksum 47d2fd89eebfdf9eb4d536b6710414297f755c17926cdebc4742c08982b40a9e
+WORKDIR /build
+COPY Package.swift Package.resolved ./
+RUN swift package resolve
+COPY Sources Sources
+COPY Tests Tests
+ARG SWIFT_EXTRA_FLAGS=""
+RUN --mount=type=cache,target=/build/.build,id=swift-build-musl \
+    swift build -c release --swift-sdk aarch64-swift-linux-musl --build-system native --product App $SWIFT_EXTRA_FLAGS \
+    && mkdir -p /out \
+    && cp "$(swift build -c release --swift-sdk aarch64-swift-linux-musl --build-system native --show-bin-path)/App" /out/App \
+    && strip /out/App
+
+FROM ${RUNTIME_IMAGE}
+RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
+COPY --from=build /out/App /App
+USER 10001:10001
+EXPOSE 8080
+ENTRYPOINT ["/App"]

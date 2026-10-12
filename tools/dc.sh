@@ -24,4 +24,14 @@ if [ "$IMAGE_FLAVOR" = "alpine" ]; then
 elif [ "$IMAGE_FLAVOR" != "distroless" ]; then
   echo "IMAGE_FLAVOR harus distroless atau alpine" >&2; exit 2
 fi
+if [ "$VARIANT" = "tuned" ]; then
+  # nilai turunan varian tuned (lihat tuning/variants.yaml); default tidak terpengaruh
+  mem=$APP_MEM; num=${mem%[gGmM]}; unit=${mem#$num}
+  case "$unit" in g|G) mib=$((num * 1024)) ;; *) mib=$num ;; esac
+  export TUNED_GOMEMLIMIT="$((mib * 80 / 100))MiB"
+  export TUNED_GOGC=${TUNED_GOGC:-400}
+  export TUNED_EVENT_LOOPS=$((2 * APP_CPUS))
+  export TUNED_SWIFT_FLAGS=${TUNED_SWIFT_FLAGS:--Xswiftc -cross-module-optimization}
+  if [ -f "$ROOT/go-app/pgo/default.pgo" ]; then export GO_PGO=1; fi
+fi
 exec docker compose "${files[@]}" --profile apps --profile tools "$@"

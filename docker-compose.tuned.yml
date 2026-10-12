@@ -1,0 +1,19 @@
+# Override varian TUNED (S13). Dipakai hanya bila VARIANT=tuned (tools/dc.sh). Konfigurasi default tidak berubah.
+# Daftar perubahan, alasan, sumber, dan bukti verifikasi: tuning/variants.yaml (maks. 3 per stack).
+# Nilai turunan (TUNED_*) dihitung oleh tools/dc.sh dari profil aktif.
+services:
+  go-app:
+    image: bench-go:${IMAGE_FLAVOR}-tuned
+    build:
+      args:
+        GO_PGO: ${GO_PGO:-0}          # (3) PGO: aktif bila go-app/pgo/default.pgo ada (hasil make profile APP=go)
+    environment:
+      GOGC: ${TUNED_GOGC}              # (2) GOGC lebih tinggi
+      GOMEMLIMIT: ${TUNED_GOMEMLIMIT}  # (1) ~80% batas memori container
+  swift-app:
+    image: bench-swift:${IMAGE_FLAVOR}-tuned
+    build:
+      args:
+        SWIFT_EXTRA_FLAGS: ${TUNED_SWIFT_FLAGS:-}   # (2) flag compiler tambahan (terdokumentasi aman, terbukti tersedia)
+    environment:
+      EVENT_LOOPS: ${TUNED_EVENT_LOOPS}              # (1) event loop 2x CPU (total pool koneksi tetap)

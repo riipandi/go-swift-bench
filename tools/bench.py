@@ -57,7 +57,7 @@ class Ctx:
         self.P = plan_params(env, smoke)
         self.apps = apps or (["go", "swift"] if env.get("APP", "both") == "both" else [env["APP"]])
         self.repeats = repeats or (1 if smoke else int(env["REPEATS"]))
-        self.run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + cmd + ("-smoke" if smoke else "")
+        self.run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + cmd + ("-smoke" if (smoke and cmd == "bench") else "")
         self.out = os.path.join(RESULTS, "raw", self.run_id)
         os.makedirs(self.out, exist_ok=True)
         self.points_f = open(os.path.join(self.out, "points.jsonl"), "a")
@@ -227,7 +227,7 @@ def latest_saturation(ctx, sc):
     base = os.path.join(RESULTS, "raw")
     for d in sorted(os.listdir(base), reverse=True):
         p = os.path.join(base, d, "saturation.json")
-        if os.path.exists(p) and d != ctx.run_id and (("smoke" in d) == ctx.smoke):
+        if os.path.exists(p) and d != ctx.run_id and d.endswith(("-bench", "-bench-smoke")) and (("smoke" in d) == ctx.smoke):
             try:
                 s = json.load(open(p))
                 if sc in s and s[sc]["slower"] > 0:
