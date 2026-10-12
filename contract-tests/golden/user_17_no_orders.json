@@ -1,0 +1,9 @@
+{
+ "body": {
+  "created_at": "2025-01-18T00:00:00Z",
+  "email": "fixture17@example.test",
+  "id": 17,
+  "name": "Qori Rahman"
+ },
+ "status": 200
+}

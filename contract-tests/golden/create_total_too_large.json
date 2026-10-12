@@ -1,0 +1,6 @@
+{
+ "body": {
+  "error": "total_cents must be between 0 and 10000000"
+ },
+ "status": 400
+}

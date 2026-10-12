@@ -1,0 +1,349 @@
+{
+ "version": 1,
+ "note": "Kasus kontrak (fixture). queries = jumlah eksekusi SQL per request (pg_stat_statements; BEGIN/COMMIT/ROLLBACK ikut dihitung). Golden di contract-tests/golden/<name>.json.",
+ "cases": [
+  {
+   "name": "healthz",
+   "method": "GET",
+   "path": "/healthz",
+   "status": 200,
+   "queries": 0
+  },
+  {
+   "name": "bench_json",
+   "method": "GET",
+   "path": "/bench/json",
+   "status": 200,
+   "queries": 0
+  },
+  {
+   "name": "bench_echo_ok",
+   "method": "POST",
+   "path": "/bench/echo",
+   "status": 200,
+   "queries": 0,
+   "body": {
+    "request_id": "req-1",
+    "customer": {
+     "id": 9,
+     "name": "Dewi",
+     "email": "dewi@example.test",
+     "address": {
+      "street": "Jl. Merdeka 1",
+      "city": "Bandung",
+      "zip": "40111",
+      "country": "ID"
+     }
+    },
+    "items": [
+     {
+      "sku": "A-1",
+      "name": "Widget",
+      "qty": 2,
+      "price_cents": 1500,
+      "labels": [
+       "x",
+       "y"
+      ]
+     },
+     {
+      "sku": "B-2",
+      "name": "Gadget",
+      "qty": 1,
+      "price_cents": 0,
+      "labels": []
+     }
+    ],
+    "tags": [
+     "t1",
+     "t2"
+    ],
+    "note": "ok"
+   }
+  },
+  {
+   "name": "bench_echo_invalid",
+   "method": "POST",
+   "path": "/bench/echo",
+   "status": 400,
+   "queries": 0,
+   "body": {
+    "request_id": "req-1",
+    "customer": {
+     "id": 9,
+     "name": "Dewi",
+     "email": "dewi@example.test",
+     "address": {
+      "street": "Jl. Merdeka 1",
+      "city": "Bandung",
+      "zip": "40111",
+      "country": "ID"
+     }
+    },
+    "items": [],
+    "tags": [
+     "t1",
+     "t2"
+    ],
+    "note": "ok"
+   }
+  },
+  {
+   "name": "bench_echo_bad_json",
+   "method": "POST",
+   "path": "/bench/echo",
+   "status": 400,
+   "queries": 0,
+   "raw_body": "{not json"
+  },
+  {
+   "name": "user_1",
+   "method": "GET",
+   "path": "/users/1",
+   "status": 200,
+   "queries": 1
+  },
+  {
+   "name": "user_17_no_orders",
+   "method": "GET",
+   "path": "/users/17",
+   "status": 200,
+   "queries": 1
+  },
+  {
+   "name": "user_404",
+   "method": "GET",
+   "path": "/users/999",
+   "status": 404,
+   "queries": 1
+  },
+  {
+   "name": "user_bad_id",
+   "method": "GET",
+   "path": "/users/abc",
+   "status": 400,
+   "queries": 0
+  },
+  {
+   "name": "orders_default_limit",
+   "method": "GET",
+   "path": "/users/1/orders",
+   "status": 200,
+   "queries": 1
+  },
+  {
+   "name": "orders_limit_5",
+   "method": "GET",
+   "path": "/users/2/orders?limit=5",
+   "status": 200,
+   "queries": 1
+  },
+  {
+   "name": "orders_empty",
+   "method": "GET",
+   "path": "/users/17/orders",
+   "status": 200,
+   "queries": 1
+  },
+  {
+   "name": "orders_bad_limit",
+   "method": "GET",
+   "path": "/users/1/orders?limit=0",
+   "status": 400,
+   "queries": 0
+  },
+  {
+   "name": "orders_unknown_user",
+   "method": "GET",
+   "path": "/users/999/orders",
+   "status": 200,
+   "queries": 1
+  },
+  {
+   "name": "include_orders",
+   "method": "GET",
+   "path": "/users/1?include=orders",
+   "status": 200,
+   "queries": 2
+  },
+  {
+   "name": "include_orders_empty",
+   "method": "GET",
+   "path": "/users/17?include=orders",
+   "status": 200,
+   "queries": 2
+  },
+  {
+   "name": "include_orders_404",
+   "method": "GET",
+   "path": "/users/999?include=orders",
+   "status": 404,
+   "queries": 1
+  },
+  {
+   "name": "create_ok",
+   "method": "POST",
+   "path": "/orders",
+   "status": 201,
+   "queries": 1,
+   "body": {
+    "user_id": 3,
+    "total_cents": 2500,
+    "note": "hello"
+   }
+  },
+  {
+   "name": "create_default_status",
+   "method": "POST",
+   "path": "/orders",
+   "status": 201,
+   "queries": 1,
+   "body": {
+    "user_id": 3,
+    "total_cents": 0
+   }
+  },
+  {
+   "name": "create_note_200",
+   "method": "POST",
+   "path": "/orders",
+   "status": 201,
+   "queries": 1,
+   "body": {
+    "user_id": 4,
+    "total_cents": 10000000,
+    "status": "paid",
+    "note": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+   }
+  },
+  {
+   "name": "create_invalid_user",
+   "method": "POST",
+   "path": "/orders",
+   "status": 400,
+   "queries": 0,
+   "body": {
+    "user_id": 0,
+    "total_cents": 1
+   }
+  },
+  {
+   "name": "create_bad_status",
+   "method": "POST",
+   "path": "/orders",
+   "status": 400,
+   "queries": 0,
+   "body": {
+    "user_id": 1,
+    "total_cents": 1,
+    "status": "nope"
+   }
+  },
+  {
+   "name": "create_total_too_large",
+   "method": "POST",
+   "path": "/orders",
+   "status": 400,
+   "queries": 0,
+   "body": {
+    "user_id": 1,
+    "total_cents": 10000001
+   }
+  },
+  {
+   "name": "create_note_201",
+   "method": "POST",
+   "path": "/orders",
+   "status": 400,
+   "queries": 0,
+   "body": {
+    "user_id": 1,
+    "total_cents": 1,
+    "note": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+   }
+  },
+  {
+   "name": "create_bad_json",
+   "method": "POST",
+   "path": "/orders",
+   "status": 400,
+   "queries": 0,
+   "raw_body": "{not json"
+  },
+  {
+   "name": "update_ok",
+   "method": "PUT",
+   "path": "/orders/5",
+   "status": 200,
+   "queries": 2,
+   "body": {
+    "status": "shipped"
+   }
+  },
+  {
+   "name": "update_404",
+   "method": "PUT",
+   "path": "/orders/999",
+   "status": 404,
+   "queries": 1,
+   "body": {
+    "status": "shipped"
+   }
+  },
+  {
+   "name": "update_bad_status",
+   "method": "PUT",
+   "path": "/orders/5",
+   "status": 400,
+   "queries": 0,
+   "body": {
+    "status": "nope"
+   }
+  },
+  {
+   "name": "update_bad_id",
+   "method": "PUT",
+   "path": "/orders/abc",
+   "status": 400,
+   "queries": 0,
+   "body": {
+    "status": "paid"
+   }
+  },
+  {
+   "name": "pay_ok",
+   "method": "POST",
+   "path": "/orders/7/pay",
+   "status": 200,
+   "queries": 5
+  },
+  {
+   "name": "pay_404",
+   "method": "POST",
+   "path": "/orders/999/pay",
+   "status": 404,
+   "queries": 3
+  },
+  {
+   "name": "not_found_route",
+   "method": "GET",
+   "path": "/nope",
+   "status": 404,
+   "queries": 0
+  },
+  {
+   "name": "readback_user_3_orders",
+   "method": "GET",
+   "path": "/users/3/orders?limit=3",
+   "status": 200,
+   "queries": 1
+  },
+  {
+   "name": "readback_user_1_orders",
+   "method": "GET",
+   "path": "/users/1/orders?limit=25",
+   "status": 200,
+   "queries": 1
+  }
+ ]
+}

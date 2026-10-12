@@ -1,0 +1,9 @@
+{
+ "body": {
+  "created_at": "2025-01-02T00:00:00Z",
+  "email": "fixture1@example.test",
+  "id": 1,
+  "name": "Ayu Lestari"
+ },
+ "status": 200
+}

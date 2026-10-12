@@ -2,6 +2,7 @@ package platform
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/pprof"
 	"runtime"
@@ -49,7 +50,17 @@ func NewAdminHandler(db *gorm.DB, cfg Config, profile bool) http.Handler {
 				var sum float64
 				for i, c := range h.Counts {
 					total += c
-					sum += float64(c) * h.Buckets[i]
+					if c == 0 {
+						continue
+					}
+					// batas bucket bisa +-Inf (tidak valid di JSON): pakai batas atas bila terhingga, jika tidak batas bawah
+					hi, lo := h.Buckets[i+1], h.Buckets[i]
+					switch {
+					case !math.IsInf(hi, 0):
+						sum += float64(c) * hi
+					case !math.IsInf(lo, 0):
+						sum += float64(c) * lo
+					}
 				}
 				out[s.Name+"/count"] = total
 				out[s.Name+"/approx_sum_s"] = sum

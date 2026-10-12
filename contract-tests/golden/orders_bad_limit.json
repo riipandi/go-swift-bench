@@ -1,0 +1,6 @@
+{
+ "body": {
+  "error": "limit must be between 1 and 100"
+ },
+ "status": 400
+}

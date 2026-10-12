@@ -18,7 +18,7 @@ func OpenDB(c Config) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		PrepareStmt:            true,
 		SkipDefaultTransaction: true,
-		Logger:                 gormlogger.Default.LogMode(gormlogger.Error),
+		Logger:                 gormlogger.Default.LogMode(gormlogger.Silent), // error DB tetap dicatat handler lewat loghttp (satu jalur log: LogLayer),
 		NowFunc:                func() time.Time { return time.Now().UTC() },
 	})
 	if err != nil {

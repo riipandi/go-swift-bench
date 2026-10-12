@@ -1,0 +1,6 @@
+{
+ "body": {
+  "error": "user_id must be positive"
+ },
+ "status": 400
+}

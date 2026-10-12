@@ -1,0 +1,6 @@
+{
+ "body": {
+  "error": "status must be one of pending, paid, shipped, cancelled"
+ },
+ "status": 400
+}

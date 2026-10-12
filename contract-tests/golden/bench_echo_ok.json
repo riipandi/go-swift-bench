@@ -1,0 +1,41 @@
+{
+ "body": {
+  "customer": {
+   "address": {
+    "city": "Bandung",
+    "country": "ID",
+    "street": "Jl. Merdeka 1",
+    "zip": "40111"
+   },
+   "email": "dewi@example.test",
+   "id": 9,
+   "name": "Dewi"
+  },
+  "items": [
+   {
+    "labels": [
+     "x",
+     "y"
+    ],
+    "name": "Widget",
+    "price_cents": 1500,
+    "qty": 2,
+    "sku": "A-1"
+   },
+   {
+    "labels": [],
+    "name": "Gadget",
+    "price_cents": 0,
+    "qty": 1,
+    "sku": "B-2"
+   }
+  ],
+  "note": "ok",
+  "request_id": "req-1",
+  "tags": [
+   "t1",
+   "t2"
+  ]
+ },
+ "status": 200
+}
