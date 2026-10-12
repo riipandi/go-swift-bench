@@ -2,8 +2,10 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"benchapp/internal/domain"
@@ -43,12 +45,12 @@ type paymentRecord struct {
 func (paymentRecord) TableName() string { return "payments" }
 
 func (r userRecord) toDomain() domain.User {
-	return domain.User{ID: r.ID, Name: r.Name, Email: r.Email, CreatedAt: r.CreatedAt}
+	return domain.User{ID: r.ID, Name: r.Name, Email: r.Email, CreatedAt: r.CreatedAt.UTC()}
 }
 
 func (r orderRecord) toDomain() domain.Order {
 	return domain.Order{ID: r.ID, UserID: r.UserID, Status: r.Status, TotalCents: r.TotalCents,
-		Note: r.Note, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		Note: r.Note, CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC()}
 }
 
 func ordersToDomain(rs []orderRecord) []domain.Order {
@@ -110,12 +112,20 @@ func (r *Repo) ListOrders(ctx context.Context, userID int64, limit int) ([]domai
 func (r *Repo) GetUserWithOrders(ctx context.Context, id int64) (domain.UserWithOrders, error) {
 	var rec userRecord
 	err := r.db.WithContext(ctx).
-		Preload("Orders", func(tx *gorm.DB) *gorm.DB { return tx.Order("created_at DESC, id DESC") }).
+		Preload("Orders").
 		First(&rec, id).Error
 	if err != nil {
 		return domain.UserWithOrders{}, mapErr(err)
 	}
-	return domain.UserWithOrders{User: rec.toDomain(), Orders: ordersToDomain(rec.Orders)}, nil
+	// Preload tidak diurutkan; urutan (created_at DESC, id DESC) diterapkan di memori (Fluent `with` tidak mendukung ORDER BY).
+	orders := ordersToDomain(rec.Orders)
+	slices.SortFunc(orders, func(a, b domain.Order) int {
+		if c := b.CreatedAt.Compare(a.CreatedAt); c != 0 {
+			return c
+		}
+		return cmp.Compare(b.ID, a.ID)
+	})
+	return domain.UserWithOrders{User: rec.toDomain(), Orders: orders}, nil
 }
 
 func (r *Repo) CreateOrder(ctx context.Context, in domain.CreateOrderInput) (domain.Order, error) {
