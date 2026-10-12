@@ -1,0 +1,997 @@
+{
+ "version": 1,
+ "note": "Daftar kasus bersama untuk suite paritas Go dan Swift (DX2). Fake repo: user id 1 dan order id 1 ada; id lain 404.",
+ "cases": [
+  {
+   "id": "order.minimal",
+   "kind": "validate_order",
+   "input": {
+    "user_id": 1,
+    "total_cents": 0
+   },
+   "expect": {
+    "ok": true,
+    "status": "pending"
+   }
+  },
+  {
+   "id": "order.explicit_status",
+   "kind": "validate_order",
+   "input": {
+    "user_id": 7,
+    "total_cents": 500,
+    "status": "shipped",
+    "note": "x"
+   },
+   "expect": {
+    "ok": true,
+    "status": "shipped"
+   }
+  },
+  {
+   "id": "order.max_total",
+   "kind": "validate_order",
+   "input": {
+    "user_id": 3,
+    "total_cents": 10000000
+   },
+   "expect": {
+    "ok": true,
+    "status": "pending"
+   }
+  },
+  {
+   "id": "order.note_200",
+   "kind": "validate_order",
+   "input": {
+    "user_id": 3,
+    "total_cents": 10,
+    "note": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+   },
+   "expect": {
+    "ok": true,
+    "status": "pending"
+   }
+  },
+  {
+   "id": "order.user_zero",
+   "kind": "validate_order",
+   "input": {
+    "user_id": 0,
+    "total_cents": 10
+   },
+   "expect": {
+    "error": "user_id must be positive"
+   }
+  },
+  {
+   "id": "order.user_negative",
+   "kind": "validate_order",
+   "input": {
+    "user_id": -5,
+    "total_cents": 10
+   },
+   "expect": {
+    "error": "user_id must be positive"
+   }
+  },
+  {
+   "id": "order.user_missing",
+   "kind": "validate_order",
+   "input": {
+    "total_cents": 5
+   },
+   "expect": {
+    "error": "user_id must be positive"
+   }
+  },
+  {
+   "id": "order.total_negative",
+   "kind": "validate_order",
+   "input": {
+    "user_id": 1,
+    "total_cents": -1
+   },
+   "expect": {
+    "error": "total_cents must be between 0 and 10000000"
+   }
+  },
+  {
+   "id": "order.total_too_large",
+   "kind": "validate_order",
+   "input": {
+    "user_id": 1,
+    "total_cents": 10000001
+   },
+   "expect": {
+    "error": "total_cents must be between 0 and 10000000"
+   }
+  },
+  {
+   "id": "order.bad_status",
+   "kind": "validate_order",
+   "input": {
+    "user_id": 1,
+    "total_cents": 1,
+    "status": "unknown"
+   },
+   "expect": {
+    "error": "status must be one of pending, paid, shipped, cancelled"
+   }
+  },
+  {
+   "id": "order.note_201",
+   "kind": "validate_order",
+   "input": {
+    "user_id": 1,
+    "total_cents": 1,
+    "note": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+   },
+   "expect": {
+    "error": "note must be at most 200 characters"
+   }
+  },
+  {
+   "id": "status.paid",
+   "kind": "validate_status",
+   "input": "paid",
+   "expect": {
+    "ok": true
+   }
+  },
+  {
+   "id": "status.cancelled",
+   "kind": "validate_status",
+   "input": "cancelled",
+   "expect": {
+    "ok": true
+   }
+  },
+  {
+   "id": "status.empty",
+   "kind": "validate_status",
+   "input": "",
+   "expect": {
+    "error": "status must be one of pending, paid, shipped, cancelled"
+   }
+  },
+  {
+   "id": "status.unknown",
+   "kind": "validate_status",
+   "input": "refunded",
+   "expect": {
+    "error": "status must be one of pending, paid, shipped, cancelled"
+   }
+  },
+  {
+   "id": "echo.valid",
+   "kind": "validate_echo",
+   "input": {
+    "request_id": "req-1",
+    "customer": {
+     "id": 9,
+     "name": "Dewi",
+     "email": "dewi@example.test",
+     "address": {
+      "street": "Jl. Merdeka 1",
+      "city": "Bandung",
+      "zip": "40111",
+      "country": "ID"
+     }
+    },
+    "items": [
+     {
+      "sku": "A-1",
+      "name": "Widget",
+      "qty": 2,
+      "price_cents": 1500,
+      "labels": [
+       "x",
+       "y"
+      ]
+     },
+     {
+      "sku": "B-2",
+      "name": "Gadget",
+      "qty": 1,
+      "price_cents": 0,
+      "labels": []
+     }
+    ],
+    "tags": [
+     "t1",
+     "t2"
+    ],
+    "note": "ok"
+   },
+   "expect": {
+    "ok": true
+   }
+  },
+  {
+   "id": "echo.no_request_id",
+   "kind": "validate_echo",
+   "input": {
+    "request_id": "",
+    "customer": {
+     "id": 9,
+     "name": "Dewi",
+     "email": "dewi@example.test",
+     "address": {
+      "street": "Jl. Merdeka 1",
+      "city": "Bandung",
+      "zip": "40111",
+      "country": "ID"
+     }
+    },
+    "items": [
+     {
+      "sku": "A-1",
+      "name": "Widget",
+      "qty": 2,
+      "price_cents": 1500,
+      "labels": [
+       "x",
+       "y"
+      ]
+     },
+     {
+      "sku": "B-2",
+      "name": "Gadget",
+      "qty": 1,
+      "price_cents": 0,
+      "labels": []
+     }
+    ],
+    "tags": [
+     "t1",
+     "t2"
+    ],
+    "note": "ok"
+   },
+   "expect": {
+    "error": "request_id is required"
+   }
+  },
+  {
+   "id": "echo.bad_customer",
+   "kind": "validate_echo",
+   "input": {
+    "request_id": "req-1",
+    "customer": {
+     "id": 0,
+     "name": "Dewi",
+     "email": "dewi@example.test",
+     "address": {
+      "street": "Jl. Merdeka 1",
+      "city": "Bandung",
+      "zip": "40111",
+      "country": "ID"
+     }
+    },
+    "items": [
+     {
+      "sku": "A-1",
+      "name": "Widget",
+      "qty": 2,
+      "price_cents": 1500,
+      "labels": [
+       "x",
+       "y"
+      ]
+     },
+     {
+      "sku": "B-2",
+      "name": "Gadget",
+      "qty": 1,
+      "price_cents": 0,
+      "labels": []
+     }
+    ],
+    "tags": [
+     "t1",
+     "t2"
+    ],
+    "note": "ok"
+   },
+   "expect": {
+    "error": "customer.id must be positive"
+   }
+  },
+  {
+   "id": "echo.bad_email",
+   "kind": "validate_echo",
+   "input": {
+    "request_id": "req-1",
+    "customer": {
+     "id": 9,
+     "name": "Dewi",
+     "email": "nope",
+     "address": {
+      "street": "Jl. Merdeka 1",
+      "city": "Bandung",
+      "zip": "40111",
+      "country": "ID"
+     }
+    },
+    "items": [
+     {
+      "sku": "A-1",
+      "name": "Widget",
+      "qty": 2,
+      "price_cents": 1500,
+      "labels": [
+       "x",
+       "y"
+      ]
+     },
+     {
+      "sku": "B-2",
+      "name": "Gadget",
+      "qty": 1,
+      "price_cents": 0,
+      "labels": []
+     }
+    ],
+    "tags": [
+     "t1",
+     "t2"
+    ],
+    "note": "ok"
+   },
+   "expect": {
+    "error": "customer.email is invalid"
+   }
+  },
+  {
+   "id": "echo.no_items",
+   "kind": "validate_echo",
+   "input": {
+    "request_id": "req-1",
+    "customer": {
+     "id": 9,
+     "name": "Dewi",
+     "email": "dewi@example.test",
+     "address": {
+      "street": "Jl. Merdeka 1",
+      "city": "Bandung",
+      "zip": "40111",
+      "country": "ID"
+     }
+    },
+    "items": [],
+    "tags": [
+     "t1",
+     "t2"
+    ],
+    "note": "ok"
+   },
+   "expect": {
+    "error": "items must contain 1 to 50 entries"
+   }
+  },
+  {
+   "id": "echo.qty_zero",
+   "kind": "validate_echo",
+   "input": {
+    "request_id": "req-1",
+    "customer": {
+     "id": 9,
+     "name": "Dewi",
+     "email": "dewi@example.test",
+     "address": {
+      "street": "Jl. Merdeka 1",
+      "city": "Bandung",
+      "zip": "40111",
+      "country": "ID"
+     }
+    },
+    "items": [
+     {
+      "sku": "A-1",
+      "name": "Widget",
+      "qty": 0,
+      "price_cents": 1500,
+      "labels": [
+       "x",
+       "y"
+      ]
+     },
+     {
+      "sku": "B-2",
+      "name": "Gadget",
+      "qty": 1,
+      "price_cents": 0,
+      "labels": []
+     }
+    ],
+    "tags": [
+     "t1",
+     "t2"
+    ],
+    "note": "ok"
+   },
+   "expect": {
+    "error": "items[0].qty must be at least 1"
+   }
+  },
+  {
+   "id": "echo.negative_price",
+   "kind": "validate_echo",
+   "input": {
+    "request_id": "req-1",
+    "customer": {
+     "id": 9,
+     "name": "Dewi",
+     "email": "dewi@example.test",
+     "address": {
+      "street": "Jl. Merdeka 1",
+      "city": "Bandung",
+      "zip": "40111",
+      "country": "ID"
+     }
+    },
+    "items": [
+     {
+      "sku": "A-1",
+      "name": "Widget",
+      "qty": 2,
+      "price_cents": 1500,
+      "labels": [
+       "x",
+       "y"
+      ]
+     },
+     {
+      "sku": "B-2",
+      "name": "Gadget",
+      "qty": 1,
+      "price_cents": -1,
+      "labels": []
+     }
+    ],
+    "tags": [
+     "t1",
+     "t2"
+    ],
+    "note": "ok"
+   },
+   "expect": {
+    "error": "items[1].price_cents must not be negative"
+   }
+  },
+  {
+   "id": "echo.too_many_tags",
+   "kind": "validate_echo",
+   "input": {
+    "request_id": "req-1",
+    "customer": {
+     "id": 9,
+     "name": "Dewi",
+     "email": "dewi@example.test",
+     "address": {
+      "street": "Jl. Merdeka 1",
+      "city": "Bandung",
+      "zip": "40111",
+      "country": "ID"
+     }
+    },
+    "items": [
+     {
+      "sku": "A-1",
+      "name": "Widget",
+      "qty": 2,
+      "price_cents": 1500,
+      "labels": [
+       "x",
+       "y"
+      ]
+     },
+     {
+      "sku": "B-2",
+      "name": "Gadget",
+      "qty": 1,
+      "price_cents": 0,
+      "labels": []
+     }
+    ],
+    "tags": [
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t",
+     "t"
+    ],
+    "note": "ok"
+   },
+   "expect": {
+    "error": "tags must contain at most 20 entries"
+   }
+  },
+  {
+   "id": "limit.default",
+   "kind": "parse_limit",
+   "input": "",
+   "expect": {
+    "ok": true,
+    "value": 20
+   }
+  },
+  {
+   "id": "limit.five",
+   "kind": "parse_limit",
+   "input": "5",
+   "expect": {
+    "ok": true,
+    "value": 5
+   }
+  },
+  {
+   "id": "limit.max",
+   "kind": "parse_limit",
+   "input": "100",
+   "expect": {
+    "ok": true,
+    "value": 100
+   }
+  },
+  {
+   "id": "limit.zero",
+   "kind": "parse_limit",
+   "input": "0",
+   "expect": {
+    "error": "limit must be between 1 and 100"
+   }
+  },
+  {
+   "id": "limit.too_large",
+   "kind": "parse_limit",
+   "input": "101",
+   "expect": {
+    "error": "limit must be between 1 and 100"
+   }
+  },
+  {
+   "id": "limit.text",
+   "kind": "parse_limit",
+   "input": "abc",
+   "expect": {
+    "error": "limit must be between 1 and 100"
+   }
+  },
+  {
+   "id": "id.ok",
+   "kind": "parse_id",
+   "input": "42",
+   "expect": {
+    "ok": true,
+    "value": 42
+   }
+  },
+  {
+   "id": "id.zero",
+   "kind": "parse_id",
+   "input": "0",
+   "expect": {
+    "error": "invalid id"
+   }
+  },
+  {
+   "id": "id.negative",
+   "kind": "parse_id",
+   "input": "-1",
+   "expect": {
+    "error": "invalid id"
+   }
+  },
+  {
+   "id": "id.text",
+   "kind": "parse_id",
+   "input": "abc",
+   "expect": {
+    "error": "invalid id"
+   }
+  },
+  {
+   "id": "json.bench_shape",
+   "kind": "bench_json",
+   "expect": {
+    "keys": 21,
+    "min_bytes": 900,
+    "max_bytes": 1300,
+    "array_key": "tags",
+    "array_len": 6
+   }
+  },
+  {
+   "id": "json.healthz",
+   "kind": "handler",
+   "request": {
+    "method": "GET",
+    "path": "/healthz"
+   },
+   "expect": {
+    "status": 200,
+    "json": {
+     "status": "ok"
+    }
+   }
+  },
+  {
+   "id": "handler.user_found",
+   "kind": "handler",
+   "request": {
+    "method": "GET",
+    "path": "/users/1"
+   },
+   "expect": {
+    "status": 200,
+    "json": {
+     "id": 1,
+     "name": "Fake User",
+     "email": "fake@example.test"
+    }
+   }
+  },
+  {
+   "id": "handler.user_not_found",
+   "kind": "handler",
+   "request": {
+    "method": "GET",
+    "path": "/users/2"
+   },
+   "expect": {
+    "status": 404,
+    "json": {
+     "error": "not found"
+    }
+   }
+  },
+  {
+   "id": "handler.user_bad_id",
+   "kind": "handler",
+   "request": {
+    "method": "GET",
+    "path": "/users/abc"
+   },
+   "expect": {
+    "status": 400,
+    "json": {
+     "error": "invalid id"
+    }
+   }
+  },
+  {
+   "id": "handler.orders_limit_2",
+   "kind": "handler",
+   "request": {
+    "method": "GET",
+    "path": "/users/1/orders?limit=2"
+   },
+   "expect": {
+    "status": 200,
+    "array_len": 2
+   }
+  },
+  {
+   "id": "handler.orders_default",
+   "kind": "handler",
+   "request": {
+    "method": "GET",
+    "path": "/users/1/orders"
+   },
+   "expect": {
+    "status": 200,
+    "array_len": 3
+   }
+  },
+  {
+   "id": "handler.orders_bad_limit",
+   "kind": "handler",
+   "request": {
+    "method": "GET",
+    "path": "/users/1/orders?limit=0"
+   },
+   "expect": {
+    "status": 400,
+    "json": {
+     "error": "limit must be between 1 and 100"
+    }
+   }
+  },
+  {
+   "id": "handler.include_orders",
+   "kind": "handler",
+   "request": {
+    "method": "GET",
+    "path": "/users/1?include=orders"
+   },
+   "expect": {
+    "status": 200,
+    "json": {
+     "id": 1
+    },
+    "orders_len": 3
+   }
+  },
+  {
+   "id": "handler.create_ok",
+   "kind": "handler",
+   "request": {
+    "method": "POST",
+    "path": "/orders",
+    "body": {
+     "user_id": 4,
+     "total_cents": 2500,
+     "note": "hello"
+    }
+   },
+   "expect": {
+    "status": 201,
+    "json": {
+     "id": 101,
+     "user_id": 4,
+     "status": "pending",
+     "total_cents": 2500,
+     "note": "hello"
+    }
+   }
+  },
+  {
+   "id": "handler.create_invalid",
+   "kind": "handler",
+   "request": {
+    "method": "POST",
+    "path": "/orders",
+    "body": {
+     "user_id": 0,
+     "total_cents": 1
+    }
+   },
+   "expect": {
+    "status": 400,
+    "json": {
+     "error": "user_id must be positive"
+    }
+   }
+  },
+  {
+   "id": "handler.create_bad_json",
+   "kind": "handler",
+   "request": {
+    "method": "POST",
+    "path": "/orders",
+    "body": "{not json"
+   },
+   "expect": {
+    "status": 400,
+    "json": {
+     "error": "invalid JSON body"
+    }
+   }
+  },
+  {
+   "id": "handler.update_ok",
+   "kind": "handler",
+   "request": {
+    "method": "PUT",
+    "path": "/orders/1",
+    "body": {
+     "status": "shipped"
+    }
+   },
+   "expect": {
+    "status": 200,
+    "json": {
+     "id": 1,
+     "status": "shipped"
+    }
+   }
+  },
+  {
+   "id": "handler.update_not_found",
+   "kind": "handler",
+   "request": {
+    "method": "PUT",
+    "path": "/orders/2",
+    "body": {
+     "status": "shipped"
+    }
+   },
+   "expect": {
+    "status": 404,
+    "json": {
+     "error": "not found"
+    }
+   }
+  },
+  {
+   "id": "handler.update_bad_status",
+   "kind": "handler",
+   "request": {
+    "method": "PUT",
+    "path": "/orders/1",
+    "body": {
+     "status": "nope"
+    }
+   },
+   "expect": {
+    "status": 400,
+    "json": {
+     "error": "status must be one of pending, paid, shipped, cancelled"
+    }
+   }
+  },
+  {
+   "id": "handler.pay_ok",
+   "kind": "handler",
+   "request": {
+    "method": "POST",
+    "path": "/orders/1/pay"
+   },
+   "expect": {
+    "status": 200,
+    "json": {
+     "order": {
+      "id": 1,
+      "status": "paid"
+     },
+     "payment": {
+      "order_id": 1
+     }
+    }
+   }
+  },
+  {
+   "id": "handler.pay_not_found",
+   "kind": "handler",
+   "request": {
+    "method": "POST",
+    "path": "/orders/2/pay"
+   },
+   "expect": {
+    "status": 404,
+    "json": {
+     "error": "not found"
+    }
+   }
+  },
+  {
+   "id": "handler.echo_ok",
+   "kind": "handler",
+   "request": {
+    "method": "POST",
+    "path": "/bench/echo",
+    "body": {
+     "request_id": "req-1",
+     "customer": {
+      "id": 9,
+      "name": "Dewi",
+      "email": "dewi@example.test",
+      "address": {
+       "street": "Jl. Merdeka 1",
+       "city": "Bandung",
+       "zip": "40111",
+       "country": "ID"
+      }
+     },
+     "items": [
+      {
+       "sku": "A-1",
+       "name": "Widget",
+       "qty": 2,
+       "price_cents": 1500,
+       "labels": [
+        "x",
+        "y"
+       ]
+      },
+      {
+       "sku": "B-2",
+       "name": "Gadget",
+       "qty": 1,
+       "price_cents": 0,
+       "labels": []
+      }
+     ],
+     "tags": [
+      "t1",
+      "t2"
+     ],
+     "note": "ok"
+    }
+   },
+   "expect": {
+    "status": 200,
+    "json": {
+     "request_id": "req-1",
+     "customer": {
+      "id": 9,
+      "name": "Dewi",
+      "email": "dewi@example.test",
+      "address": {
+       "street": "Jl. Merdeka 1",
+       "city": "Bandung",
+       "zip": "40111",
+       "country": "ID"
+      }
+     },
+     "items": [
+      {
+       "sku": "A-1",
+       "name": "Widget",
+       "qty": 2,
+       "price_cents": 1500,
+       "labels": [
+        "x",
+        "y"
+       ]
+      },
+      {
+       "sku": "B-2",
+       "name": "Gadget",
+       "qty": 1,
+       "price_cents": 0,
+       "labels": []
+      }
+     ],
+     "tags": [
+      "t1",
+      "t2"
+     ],
+     "note": "ok"
+    }
+   }
+  },
+  {
+   "id": "handler.echo_invalid",
+   "kind": "handler",
+   "request": {
+    "method": "POST",
+    "path": "/bench/echo",
+    "body": {
+     "request_id": "req-1",
+     "customer": {
+      "id": 9,
+      "name": "Dewi",
+      "email": "dewi@example.test",
+      "address": {
+       "street": "Jl. Merdeka 1",
+       "city": "Bandung",
+       "zip": "40111",
+       "country": "ID"
+      }
+     },
+     "items": [],
+     "tags": [
+      "t1",
+      "t2"
+     ],
+     "note": "ok"
+    }
+   },
+   "expect": {
+    "status": 400,
+    "json": {
+     "error": "items must contain 1 to 50 entries"
+    }
+   }
+  }
+ ]
+}

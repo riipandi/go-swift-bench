@@ -1,0 +1,19 @@
+# Flavor alpine: runtime Alpine, pengguna non-root.
+ARG GO_BUILD_IMAGE
+ARG RUNTIME_IMAGE
+FROM ${GO_BUILD_IMAGE} AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG GO_PGO=0
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    if [ "$GO_PGO" = "1" ]; then PGO=pgo/default.pgo; else PGO=off; fi; \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w' -pgo=$PGO -o /out/server ./cmd/server
+
+FROM ${RUNTIME_IMAGE}
+RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
+COPY --from=build /out/server /server
+USER 10001:10001
+EXPOSE 8080
+ENTRYPOINT ["/server"]
