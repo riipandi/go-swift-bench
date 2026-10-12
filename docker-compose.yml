@@ -106,7 +106,7 @@ services:
   # Probe kecil di jaringan yang sama: polling /healthz dan request ad-hoc (Distroless tidak punya shell).
   probe:
     profiles: [tools]
-    image: ${ALPINE_IMAGE}
+    image: bench-sampler:latest   # binary /sampler memuat subcommand 'probe' (polling, request pertama, burst)
     container_name: bench-probe
     entrypoint: ["sleep", "infinity"]
     cpus: 1
