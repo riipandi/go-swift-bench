@@ -1,0 +1,9 @@
+# Override pengembangan/profiling: publish port aplikasi ke localhost. TIDAK dipakai saat benchmark.
+services:
+  go-app:
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:6060:6060"
+  swift-app:
+    ports:
+      - "127.0.0.1:8081:8080"

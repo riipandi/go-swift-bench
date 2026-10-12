@@ -1,0 +1,14 @@
+.env
+.DS_Store
+*.noindex/
+.build/
+.swiftpm/
+bin/
+results/raw/
+results/profiles/
+results/*.csv
+results/*.png
+results/report.md
+!results/examples/
+go-app/server
+tmp/

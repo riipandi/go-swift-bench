@@ -1,0 +1,167 @@
+# Semua nilai batas datang dari profiles/<PROFILE>.conf lewat tools/dc.sh (jangan panggil compose langsung).
+name: bench
+
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+x-app-env: &app-env
+  PORT: "8080"
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_USER: bench
+  DB_PASSWORD: bench
+  DB_NAME: ${DB_NAME:-bench}
+  DB_POOL: ${DB_POOL_TOTAL}
+  LOG_MODE: ${LOG_MODE}
+  LOG_FORMAT: ${LOG_FORMAT}
+
+x-app-limits: &app-limits
+  cpus: ${APP_CPUS}
+  cpuset: ${APP_CPUSET}
+  mem_limit: ${APP_MEM}
+  memswap_limit: ${APP_MEM}
+  ulimits:
+    nofile: {soft: 65536, hard: 65536}
+  logging: *logging
+  networks: [bench]
+  restart: "no"
+
+networks:
+  bench:
+    name: bench-net
+
+volumes:
+  pgdata:
+    name: bench-pgdata
+
+services:
+  postgres:
+    image: ${PG_IMAGE}
+    container_name: bench-postgres
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgres.conf
+    environment:
+      POSTGRES_USER: bench
+      POSTGRES_PASSWORD: bench
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:54322:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./db/postgres.conf:/etc/postgresql/postgres.conf:ro
+    cpus: ${PG_CPUS}
+    cpuset: ${PG_CPUSET}
+    mem_limit: ${PG_MEM}
+    memswap_limit: ${PG_MEM}
+    shm_size: 1g
+    logging: *logging
+    networks: [bench]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bench -d postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  go-app:
+    profiles: [apps]
+    image: bench-go:${IMAGE_FLAVOR}
+    container_name: bench-go-app
+    build:
+      context: ./go-app
+      dockerfile: ${GO_DOCKERFILE:-Dockerfile}
+      args:
+        GO_BUILD_IMAGE: ${GO_BUILD_IMAGE}
+        RUNTIME_IMAGE: ${GO_RUNTIME_IMAGE:-}
+        GO_PGO: ${GO_PGO:-0}
+    environment:
+      <<: *app-env
+      ADMIN_PORT: "6060"
+      GOMAXPROCS: ${GOMAXPROCS_APP}
+      GOGC: ${GOGC:-}
+      GOMEMLIMIT: ${GOMEMLIMIT:-}
+      PROFILE: "0"
+    <<: *app-limits
+
+  swift-app:
+    profiles: [apps]
+    image: bench-swift:${IMAGE_FLAVOR}
+    container_name: bench-swift-app
+    build:
+      context: ./swift-app
+      dockerfile: ${SWIFT_DOCKERFILE:-Dockerfile}
+      args:
+        SWIFT_BUILD_IMAGE: ${SWIFT_BUILD_IMAGE}
+        RUNTIME_IMAGE: ${SWIFT_RUNTIME_IMAGE:-}
+        SWIFT_EXTRA_FLAGS: ${SWIFT_EXTRA_FLAGS:-}
+    environment:
+      <<: *app-env
+      EVENT_LOOPS: ${EVENT_LOOPS}
+    <<: *app-limits
+
+  # Probe kecil di jaringan yang sama: polling /healthz dan request ad-hoc (Distroless tidak punya shell).
+  probe:
+    profiles: [tools]
+    image: ${ALPINE_IMAGE}
+    container_name: bench-probe
+    entrypoint: ["sleep", "infinity"]
+    cpus: 1
+    cpuset: ${SAMPLER_CPUSET}
+    mem_limit: 64m
+    networks: [bench]
+
+  k6:
+    profiles: [tools]
+    image: ${K6_IMAGE}
+    container_name: bench-k6
+    entrypoint: ["sleep", "infinity"]
+    cpus: ${K6_CPUS}
+    cpuset: ${K6_CPUSET}
+    mem_limit: ${K6_MEM}
+    memswap_limit: ${K6_MEM}
+    ulimits:
+      nofile: {soft: 65536, hard: 65536}
+    volumes:
+      - ./loadtest:/loadtest:ro
+      - ./results:/results
+    networks: [bench]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Sampler: dijalankan lewat 'docker run --pid=host --cgroupns=host' oleh orkestrator (lihat tools/sampler);
+  # di sini hanya definisi build agar image terkunci dan terbangun lewat compose.
+  sampler:
+    profiles: [tools]
+    image: bench-sampler:latest
+    build:
+      context: ./tools/sampler
+      args:
+        GO_BUILD_IMAGE: ${GO_BUILD_IMAGE}
+        ALPINE_IMAGE: ${ALPINE_IMAGE}
+    entrypoint: ["true"]
+    networks: [bench]
+
+  # Profil opsional 'monitoring' (mati secara default): docker compose --profile monitoring up
+  cadvisor:
+    profiles: [monitoring]
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks: [bench]
+  prometheus:
+    profiles: [monitoring]
+    image: prom/prometheus:latest
+    ports: ["127.0.0.1:9090:9090"]
+    networks: [bench]
+  grafana:
+    profiles: [monitoring]
+    image: grafana/grafana:latest
+    ports: ["127.0.0.1:3000:3000"]
+    networks: [bench]
