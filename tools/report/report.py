@@ -80,7 +80,7 @@ def latest_dir(sub):
     base = os.path.join(RAW, sub)
     if not os.path.isdir(base):
         return None
-    ds = sorted(d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d)))
+    ds = sorted(d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d)) and not d.startswith(("_", ".")))
     return os.path.join(base, ds[-1]) if ds else None
 
 
@@ -115,6 +115,7 @@ def section_load(runs):
     w("## Hasil beban (default)")
     w()
     w("> **%s.** Sumber: %s. Run: %s." % (LABEL_LOAD, "angka " + label.upper() if label.startswith("smoke") else label, ", ".join(r["id"] for r in src)))
+    w("> **Definisi memori.** `anon` = memori privat proses (stabil, dipakai untuk kesimpulan); `cgroup peak` = `memory.peak` yang ikut menghitung page cache berkas yang dibebankan ke cgroup pertama yang menyentuhnya, sehingga tidak deterministik antar run.")
     if label.startswith("smoke"):
         w("> **Angka smoke, bukan final:** 1 ulangan, durasi dipangkas; tidak ada kesimpulan yang lolos aturan (butuh ≥ 2 ulangan).")
     w()
@@ -154,6 +155,11 @@ def section_load(runs):
                 cell(sat_by_app["go"], 0), cell(sat_by_app["swift"], 0), fmt_ratio(ratio(sat_by_app["go"], sat_by_app["swift"])), ver[1]))
             w()
             summary[sc] = {"sat": sat_by_app, "verdict": ver}
+        if vus:
+            ku = {app: stat([p["k6_util"] for p in A.get((app, max(vus)), [])]) for app in APPS}
+            w("Utilisasi CPU k6 pada VU tertinggi (batas validitas 0,8; di atasnya run dibuang): Go %s, Swift %s. Bila angka mendekati 0,8, saturasi bisa dibatasi pembangkit beban (khususnya S1/S2 yang tanpa database)." % (
+                cell(ku["go"], 2), cell(ku["swift"], 2)))
+            w()
         # tahap B
         B = group([p for p in main if p["scenario"] == sc and p["stage"] == "B"], lambda p: (p["app"], p.get("frac")))
         fr = sorted({k[1] for k in B if k[1] is not None})
@@ -170,7 +176,7 @@ def section_load(runs):
                              cell(stat([get(p, "res.cpu_cores") for p in pp]), 2),
                              cell(stat([get(p, "res.cpu_user_cores") for p in pp]), 2) + " / " + cell(stat([get(p, "res.cpu_sys_cores") for p in pp]), 2),
                              cell(stat([p["cpu_ms_per_req"] for p in pp]), 3),
-                             cell(stat([get(p, "res.mem_peak_mb") for p in pp]), 0),
+                             cell(stat([get(p, "res.mem_anon_max_mb") for p in pp]), 0) + " / " + cell(stat([get(p, "res.mem_peak_mb") for p in pp]), 0),
                              cell(stat([get(p, "res.threads_max") for p in pp]), 0),
                              cell(stat([get(p, "res.fds_max") for p in pp]), 0),
                              cell(stat([p["queries_per_req"] for p in pp]), 2),
@@ -178,7 +184,7 @@ def section_load(runs):
         if rows:
             w("**Tahap B (laju tetap, open-loop; resource sebanding pada throughput yang sama)**")
             w()
-            md_table(["Laju (% saturasi yang lebih lambat)", "App", "p50 ms", "p99 ms", "CPU core", "CPU user / sys", "CPU-ms/req", "Mem puncak MB", "Thread maks", "FD maks", "Query/req", "Dropped"], rows)
+            md_table(["Laju (% saturasi yang lebih lambat)", "App", "p50 ms", "p99 ms", "CPU core", "CPU user / sys", "CPU-ms/req", "Mem anon maks / cgroup peak MB", "Thread maks", "FD maks", "Query/req", "Dropped"], rows)
         # turunan pada saturasi tertinggi A
         rows = []
         if vus:
@@ -186,12 +192,12 @@ def section_load(runs):
             for app in APPS:
                 pp = A.get((app, vmax), [])
                 if pp:
-                    rows.append([app, vmax, cell(stat([p["rps_per_core"] for p in pp]), 0), cell(stat([p["rps_per_gb_peak"] for p in pp]), 0),
+                    rows.append([app, vmax, cell(stat([p["rps_per_core"] for p in pp]), 0), cell(stat([p["rps_per_gb_anon"] for p in pp if p.get("rps_per_gb_anon")]), 0) + " / " + cell(stat([p["rps_per_gb_peak"] for p in pp]), 0),
                                  cell(stat([p["cpu_ms_per_req"] for p in pp]), 3), cell(stat([get(p, "pg_util") for p in pp]), 2)])
             if rows:
                 w("**Efisiensi pada VU tertinggi (kapasitas, bukan perbandingan efisiensi — lihat tahap B)**")
                 w()
-                md_table(["App", "VU", "RPS per core terpakai", "RPS per GB mem puncak", "CPU-ms/req", "Util. Postgres"], rows)
+                md_table(["App", "VU", "RPS per core terpakai", "RPS per GB mem (anon maks / cgroup peak)", "CPU-ms/req", "Util. Postgres"], rows)
         # rasio
         if vus:
             ratios = []
@@ -204,13 +210,23 @@ def section_load(runs):
             if p["scenario"] == sc:
                 for fl in p.get("flags", []):
                     warnings.append("%s %s %s %s: %s" % (p["run_id"], p["app"], sc, p["label"], fl))
+        aggk = group([p for p in main if p["scenario"] == sc], lambda p: (p["app"], p["stage"], p["label"], p["flavor"], p["variant"]))
+        for (app_, stage_, label_, flavor_, variant_), pp in aggk.items():
+            row = {"app": app_, "scenario": sc, "stage": stage_, "point": label_, "flavor": flavor_, "variant": variant_, "n": len(pp), "smoke": pp[0].get("smoke")}
+            for name_, path_ in (("rps", "rps"), ("p50_ms", "lat_ms.med"), ("p99_ms", "lat_ms.p(99)"), ("cpu_cores", "res.cpu_cores"), ("cpu_user", "res.cpu_user_cores"),
+                                 ("cpu_sys", "res.cpu_sys_cores"), ("cpu_ms_per_req", "cpu_ms_per_req"), ("mem_anon_max_mb", "res.mem_anon_max_mb"),
+                                 ("mem_peak_mb", "res.mem_peak_mb"), ("threads_max", "res.threads_max"), ("queries_per_req", "queries_per_req")):
+                st_ = stat([get(p, path_) for p in pp])
+                if st_:
+                    row.update({name_ + "_median": st_["med"], name_ + "_min": st_["min"], name_ + "_max": st_["max"], name_ + "_cv_pct": round(st_["cv"], 2)})
+            csv_rows.setdefault("agg_summary", []).append(row)
         for p in main:
             if p["scenario"] == sc:
                 csv_rows.setdefault("agg_points", []).append(
                     {"run": p["run_id"], "app": p["app"], "scenario": sc, "stage": p["stage"], "label": p["label"], "repeat": p["repeat"], "rps": round(p["rps"], 2),
                      "p50_ms": p["lat_ms"]["med"], "p99_ms": p["lat_ms"]["p(99)"], "err_rate": p["err_rate"], "cpu_cores": get(p, "res.cpu_cores"),
                      "cpu_user": get(p, "res.cpu_user_cores"), "cpu_sys": get(p, "res.cpu_sys_cores"), "cpu_ms_per_req": p["cpu_ms_per_req"],
-                     "mem_peak_mb": get(p, "res.mem_peak_mb"), "threads_max": get(p, "res.threads_max"), "fds_max": get(p, "res.fds_max"),
+                     "mem_peak_mb": get(p, "res.mem_peak_mb"), "mem_anon_max_mb": get(p, "res.mem_anon_max_mb"), "threads_max": get(p, "res.threads_max"), "fds_max": get(p, "res.fds_max"),
                      "queries_per_req": p["queries_per_req"], "flags": "|".join(p.get("flags", [])), "smoke": p.get("smoke")})
     return {"summary": summary, "points": main, "label": label}
 
@@ -274,11 +290,11 @@ def section_soak_logcost(runs):
             first, last = segs[0], segs[-1]
             f = stat([p["lat_ms"]["p(99)"] for p in pp if p["label"] == first])
             l = stat([p["lat_ms"]["p(99)"] for p in pp if p["label"] == last])
-            mf = stat([get(p, "res.mem_avg_mb") for p in pp if p["label"] == first])
-            ml = stat([get(p, "res.mem_avg_mb") for p in pp if p["label"] == last])
+            mf = stat([get(p, "res.mem_anon_avg_mb") for p in pp if p["label"] == first])
+            ml = stat([get(p, "res.mem_anon_avg_mb") for p in pp if p["label"] == last])
             tf = stat([get(p, "res.threads_max") for p in pp if p["label"] == last])
             rows.append([app, len(segs), cell(f, 2), cell(l, 2), cell(mf, 1), cell(ml, 1), cell(tf, 0)])
-        md_table(["App", "Segmen", "p99 ms segmen pertama", "p99 ms segmen terakhir", "Mem MB awal", "Mem MB akhir", "Thread akhir"], rows)
+        md_table(["App", "Segmen", "p99 ms segmen pertama", "p99 ms segmen terakhir", "Mem anon MB awal", "Mem anon MB akhir", "Thread akhir"], rows)
     lc = [p for p in pts if p["scenario"] == "s11"]
     if lc:
         w("## S11 biaya logging (S8 pada laju tetap 50% saturasi: quiet vs access)")
@@ -391,9 +407,11 @@ def section_startup():
         rr = [r for r in rows if r["flavor"] == fl and r["app"] == app]
         f = lambda k: stat([r["first_request_us"].get(k) / 1000.0 for r in rr if r["first_request_us"].get(k, -1) > 0])
         srows.append([fl, app, len(rr), cell(stat([r["startup_ms"] for r in rr]), 0), cell(f("S1"), 1), cell(f("S3"), 1), cell(f("S4"), 1), cell(f("S6"), 1),
-                      cell(stat([r["mem_5s_after_ready_bytes"] for r in rr]), 1, 1 / 1048576.0), cell(stat([r["mem_after_100_requests_bytes"] for r in rr]), 1, 1 / 1048576.0)])
+                      cell(stat([r["mem_5s_anon_bytes"] for r in rr if r.get("mem_5s_anon_bytes") is not None]), 1, 1 / 1048576.0),
+                      cell(stat([r["mem_after_100_anon_bytes"] for r in rr if r.get("mem_after_100_anon_bytes") is not None]), 1, 1 / 1048576.0),
+                      cell(stat([r["mem_after_100_requests_bytes"] for r in rr]), 1, 1 / 1048576.0)])
         csv_rows.setdefault("agg_startup", []).append({"flavor": fl, "app": app, "n": len(rr), "startup_ms_median": stat([r["startup_ms"] for r in rr])["med"]})
-    md_table(["Flavor", "App", "n", "Start ms (create→/healthz 200)", "Req pertama S1 ms", "S3 ms", "S4 ms", "S6 ms", "Mem 5 dtk setelah siap MB", "Mem setelah 100 req MB"], srows)
+    md_table(["Flavor", "App", "n", "Start ms (create→/healthz 200)", "Req pertama S1 ms", "S3 ms", "S4 ms", "S6 ms", "Mem anon 5 dtk setelah siap MB", "Mem anon setelah 100 req MB", "memory.current setelah 100 req MB (termasuk page cache)"], srows)
     return {"images": imgs, "rows": rows}
 
 
@@ -417,11 +435,20 @@ def section_tuned(runs, main_info):
                 from runner import saturation_of
                 return stat([saturation_of(v, 250.0)[0] for v in by.values()]) if by else None
             sd, st = sat(dp), sat(tp)
-            B = lambda pp, k: stat([get(p, k) if "." in k else p.get(k) for p in pp if p["scenario"] == sc and p["app"] == app and p["stage"] == "B" and p.get("frac") == 0.5])
-            for name, getter in (("saturasi RPS (A)", lambda pp: sat(pp)), ("p99 ms @50% (B)", lambda pp: B(pp, "lat_ms.p(99)")),
-                                 ("CPU-ms/req @50% (B)", lambda pp: B(pp, "cpu_ms_per_req")), ("mem puncak MB @50% (B)", lambda pp: B(pp, "res.mem_peak_mb"))):
+            def B(pp, k):
+                return stat([get(p, k) if "." in k else p.get(k) for p in pp if p["scenario"] == sc and p["app"] == app and p["stage"] == "B" and p.get("frac") == 0.5])
+
+            def rate_of(pp):
+                v = [p["params"].get("RATE") for p in pp if p["scenario"] == sc and p["app"] == app and p["stage"] == "B" and p.get("frac") == 0.5]
+                return float(v[0]) if v else None
+            rd, rt = rate_of(dp), rate_of(tp)
+            same_rate = bool(rd and rt and abs(rd - rt) / rd <= 0.02)
+            for name, getter, needs_same in (("saturasi RPS (A)", lambda pp: sat(pp), False), ("p99 ms @50% (B)", lambda pp: B(pp, "lat_ms.p(99)"), True),
+                                             ("CPU-ms/req @50% (B)", lambda pp: B(pp, "cpu_ms_per_req"), True), ("mem anon maks MB @50% (B)", lambda pp: B(pp, "res.mem_anon_max_mb"), True)):
                 a, b = getter(dp), getter(tp)
-                if a and b:
+                if a and b and needs_same and not same_rate:
+                    rows.append([sc.upper(), app, name, cell(a, 2), cell(b, 2), "laju B berbeda (default %s vs tuned %s RPS): tidak sebanding" % (rd, rt)])
+                elif a and b:
                     rows.append([sc.upper(), app, name, cell(a, 2), cell(b, 2), "%+.1f%%" % ((b["med"] - a["med"]) / a["med"] * 100.0) if a["med"] else "–"])
     if rows:
         md_table(["Skenario", "App", "Metrik", "Default", "Tuned", "Selisih median"], rows)
@@ -464,14 +491,17 @@ def section_scale(runs):
             per = {}
             for n in sorted({p["app_cpus"] for p in pts}):
                 by = group([p for p in pts if p["scenario"] == sc and p["app"] == app and p["app_cpus"] == n], lambda p: p["repeat"])
-                per[n] = {r: (saturation_of(v, 250.0)[0], any("db_bound" in p["flags"] for p in v if p["rps"] >= 0.9 * max(q["rps"] for q in v))) for r, v in by.items()}
+                per[n] = {r: (saturation_of(v, 250.0)[0], any("db_bound" in p["flags"] for p in v if p["rps"] >= 0.9 * max(q["rps"] for q in v)),
+                              any("app_not_saturated" in p["flags"] for p in v if p["rps"] >= 0.9 * max(q["rps"] for q in v))) for r, v in by.items()}
             if 1 not in per:
                 continue
             for n in sorted(per):
                 effs = [per[n][r][0] / (n * per[1][r][0]) for r in per[n] if r in per[1] and per[1][r][0]]
                 rps = stat([v[0] for v in per[n].values()])
                 dbb = any(v[1] for v in per[n].values())
-                rows.append([sc.upper(), app, n, cell(rps, 0), cell(stat(effs), 2), "terbatas DB" if dbb else "–"])
+                nsat = any(v[2] for v in per[n].values())
+                note = "; ".join(x for x in ("terbatas DB" if dbb else "", "app < 85% batas CPU (pembatas lain: k6/DB/VM; efisiensi bukan sifat aplikasi)" if nsat else "") if x) or "–"
+                rows.append([sc.upper(), app, n, cell(rps, 0), cell(stat(effs), 2), note])
                 res[(sc, app, n)] = stat(effs)
     md_table(["Skenario", "App", "CPU", "RPS saturasi", "Efisiensi RPS(n)/(n×RPS(1))", "Catatan"], rows)
     return res
@@ -493,7 +523,7 @@ def section_sc2(main_info):
                 xs = [int(p["params"]["VUS"]) for p in v]
                 if len(xs) < 2:
                     continue
-                m = slope(xs, [get(p, "res.mem_peak_mb") for p in v])
+                m = slope(xs, [get(p, "res.mem_anon_max_mb") for p in v])
                 t = slope(xs, [get(p, "res.threads_max") for p in v])
                 if m is not None:
                     mem_sl.append(m * 100)
@@ -506,7 +536,7 @@ def section_sc2(main_info):
             if sm or st_:
                 rows.append([sc.upper(), app, cell(sm, 2), cell(st_, 3), cell(sk, 0) if sk else "tidak terdeteksi"])
                 res[(sc, app)] = {"mem": sm, "threads": st_, "knee": sk}
-    md_table(["Skenario", "App", "Kemiringan mem puncak per 100 VU (MB)", "Pertumbuhan thread per VU", "Titik lutut latensi (VU; p99 ≥ 2× p99 VU terendah)"], rows)
+    md_table(["Skenario", "App", "Kemiringan mem anon maks per 100 VU (MB)", "Pertumbuhan thread per VU", "Titik lutut latensi (VU; p99 ≥ 2× p99 VU terendah)"], rows)
     return res
 
 
@@ -591,7 +621,7 @@ def section_dx():
         w("**DX4 diagnostik compiler** (kualitatif; keluaran apa adanya di `results/raw/dx/diagnostics/`; tanpa skor dan tanpa pemenang)")
         w()
         md_table(["Stack", "Mutasi", "Baris keluaran", "Menunjuk baris yang benar", "Pesan error pertama"],
-                 [[r["stack"], r["mutation"], r["output_lines"], "ya" if r["points_to_correct_line"] else "tidak", "`" + (r["first_error"] or "–").replace("|", "\\|")[:160] + "`"] for r in d4])
+                 [[r["stack"], r["mutation"], r["output_lines"], "ya" if r["points_to_correct_line"] else "tidak", "`" + re.sub(r"^.*?/src/", "", re.sub(r"\x1b\[[0-9;]*m", "", (r["first_error"] or "–"))).replace("|", "\\|")[:170] + "`"] for r in d4])
     w("**DX5 onboarding** (clone bersih → request pertama sukses)")
     w()
     rows = []
@@ -620,7 +650,16 @@ def section_profile():
         if d["app"] == "go":
             md_table(["#", "flat", "flat%", "cum", "cum%", "fungsi"], [[i + 1, r["flat"], r["flat_pct"], r["cum"], r["cum_pct"], "`" + r["name"] + "`"] for i, r in enumerate(d["top10"])])
         else:
-            md_table(["#", "sampel (top of stack)", "fungsi", "image"], [[i + 1, r["samples"], "`" + r["name"] + "`", r["image"]] for i, r in enumerate(d["top10"])])
+            w("**Daftar mentah** (semua thread, termasuk thread idle):")
+            w()
+            md_table(["#", "sampel (top of stack)", "fungsi", "image"], [[i + 1, r["samples"], "`" + r["name"][:110] + "`", r["image"]] for i, r in enumerate(d["top10"])])
+            if d.get("top10_excluding_wait"):
+                w("**Tanpa primitif tunggu thread idle** (disaring: `%s`):" % "`, `".join(d.get("wait_functions_filtered", [])))
+                w()
+                md_table(["#", "sampel (top of stack)", "fungsi", "image"], [[i + 1, r["samples"], "`" + r["name"][:110] + "`", r["image"]] for i, r in enumerate(d["top10_excluding_wait"])])
+            if d.get("xctrace"):
+                w("Trace Instruments (Time Profiler) tersimpan: `%s/timeprofiler.trace`." % os.path.relpath(os.path.dirname(f), ROOT))
+                w()
         if d.get("svg_note"):
             w("_%s_" % d["svg_note"])
             w()
@@ -635,11 +674,12 @@ def section_config(runs, contract):
     ver = lambda m: (re.search(re.escape(m) + r" (v[\w.\-]+)", gomod) or [None, "?"])[1]
     resolved = json.load(open(os.path.join(ROOT, "swift-app", "Package.resolved")))
     pins = {p["identity"]: p["state"].get("version", p["state"].get("revision", "")[:8]) for p in (resolved.get("pins") or [])}
+    meta_sw = re.sub(r"\s+", " ", str(meta.get("sw_vers", ""))).replace("ProductName: macOS ProductVersion: ", "").replace(" BuildVersion: ", " (") + (")" if "BuildVersion" in str(meta.get("sw_vers", "")) else "")
     rows = [["Go", "1.27.2 (image golang:1.27.2; chi %s, gorm %s, driver/postgres %s, loglayer %s)" % (ver("go-chi/chi/v5"), ver("gorm.io/gorm"), ver("gorm.io/driver/postgres"), ver("go.loglayer.dev/v3"))],
             ["Swift", "6.4.0 (image swift:6.4-noble; Vapor %s, Fluent %s, fluent-postgres-driver %s)" % (pins.get("vapor"), pins.get("fluent"), pins.get("fluent-postgres-driver"))],
             ["k6", meta.get("k6_version", "k6 v2.3.0")], ["Postgres", meta.get("postgres_version", "18.6 (alpine, digest terkunci)")]]
     if meta:
-        rows += [["Mac", "%s, macOS %s, %s core (%sP+%sE)" % (meta.get("mac_model"), meta.get("sw_vers"), meta.get("hw_ncpu"), meta.get("perf_cores"), meta.get("eff_cores"))],
+        rows += [["Mac", "%s, macOS %s, %s core (%sP+%sE)" % (meta.get("mac_model"), meta_sw, meta.get("hw_ncpu"), meta.get("perf_cores"), meta.get("eff_cores"))],
                  ["Docker", "%s (%s); VM %s vCPU, %.2f GiB; cgroup v%s" % (meta.get("docker_version"), meta.get("docker_engine"), meta.get("docker_vm_cpus"), int(meta.get("docker_vm_mem_bytes", 0)) / 2 ** 30, meta.get("cgroup_version"))],
                  ["Profil / flavor / varian", "%s / %s / %s; SLO p99 %s ms" % (meta.get("profile"), meta.get("image_flavor"), meta.get("variant"), meta.get("slo_p99_ms"))],
                  ["Batas", json.dumps(meta.get("limits"))], ["ulimit -n", meta.get("ulimit_n")]]
@@ -673,6 +713,8 @@ def section_warnings(runs, contract, bi):
     flagc = {}
     for x in warnings:
         fl = x.rsplit(": ", 1)[-1]
+        if fl == "app_not_saturated":
+            continue
         flagc[fl] = flagc.get(fl, 0) + 1
     for fl, c in sorted(flagc.items()):
         items.append("%d titik ditandai `%s`" % (c, fl))
@@ -684,12 +726,16 @@ def section_warnings(runs, contract, bi):
 
 
 # ------------------------------------------------------------------ kesimpulan
-def sentence(metric, cond, ref, sa, sb, lower, det=False, unit="", d=2, scale=1.0):
-    code, txt = judge(sa, sb, lower, deterministic=det)
-    if not sa or not sb:
-        return code, "%s (%s): %s [%s]" % (metric, cond, txt, ref)
-    r = ratio(sa, sb)
-    return code, "%s (%s): Go %s%s, Swift %s%s, rasio Swift/Go %s → **%s** [%s]" % (metric, cond, cell(sa, d, scale), unit, cell(sb, d, scale), unit, fmt_ratio(r), txt, ref)
+def evaluate(metric, cond, ref, sa, sb, lower, det=False, d=2, scale=1.0, unit="", word="lebih baik"):
+    """Kembalikan dict: kode (a|b|setara|belum), kalimat berformat baku yang menunjuk tabel sumber, dan baris matriks."""
+    code, txt = judge(sa, sb, lower, deterministic=det, word=word)
+    r = ratio(sa, sb) if (sa and sb and sa["med"] > 0 and sb["med"] > 0) else None  # rasio hanya bermakna untuk nilai positif
+    go_c, sw_c = cell(sa, d, scale) + unit if sa else "–", cell(sb, d, scale) + unit if sb else "–"
+    if sa and sb:
+        sent = "%s (%s): Go %s, Swift %s, rasio Swift/Go %s → **%s** [%s]" % (metric, cond, go_c, sw_c, fmt_ratio(r), txt, ref)
+    else:
+        sent = "%s (%s): %s [%s]" % (metric, cond, txt, ref)
+    return {"code": code, "sentence": sent, "row": [metric, cond, go_c, sw_c, fmt_ratio(r), txt]}
 
 
 def section_conclusion(bi, st, dx, sc2, scale, mod, main_info):
@@ -697,77 +743,69 @@ def section_conclusion(bi, st, dx, sc2, scale, mod, main_info):
     w()
     w("Aturan: satu stack dinyatakan lebih baik hanya bila rentang min–maks kedua stack tidak tumpang tindih dan selisih median > 5%; selain itu 'setara' atau 'belum cukup bukti' (ulangan < 2). Setiap kalimat menunjuk tabel/metrik sumbernya. DX4 tidak diberi skor.")
     w()
-    lines = []   # (kode, kalimat)
-    # --- build
+    items = []   # (kelompok, hasil evaluate)
+
+    def add(group, *a, **k):
+        items.append((group, evaluate(*a, **k)))
+
     matrix = (bi or {}).get("matrix", {})
     for scen in ("B1", "B2", "B3"):
         for config in ("dev", "release"):
             a, b = matrix.get((scen, config, "go")), matrix.get((scen, config, "swift"))
             if a or b:
-                lines.append(("Build %s %s (wall)" % (scen, config), sentence("Build %s %s" % (scen, config), "wall s, " + LABEL_NATIVE, "tabel Build time", a, b, True, d=2)))
-    # --- DX
+                add("DX", "Build %s %s" % (scen, config), "wall s, " + LABEL_NATIVE, "tabel Build time", a, b, True)
     if dx:
         R = dx["R"]
-        lines.append(("DX1", sentence("DX1 edit→siap", "detik, " + LABEL_NATIVE, "tabel DX1", R("DX1", "go", "edit_to_ready_s"), R("DX1", "swift", "edit_to_ready_s"), True)))
-        lines.append(("DX2 cold", sentence("DX2 test suite (cache kosong)", "detik", "tabel DX2", R("DX2", "go", "cold_wall_s"), R("DX2", "swift", "cold_wall_s"), True)))
-        lines.append(("DX2 warm", sentence("DX2 test suite (cache hangat)", "detik", "tabel DX2", R("DX2", "go", "warm_wall_s"), R("DX2", "swift", "warm_wall_s"), True)))
+        add("DX", "DX1 edit→siap", "detik, " + LABEL_NATIVE, "tabel DX1", R("DX1", "go", "edit_to_ready_s"), R("DX1", "swift", "edit_to_ready_s"), True)
+        add("DX", "DX2 test suite (cache build kosong)", "detik", "tabel DX2", R("DX2", "go", "cold_wall_s"), R("DX2", "swift", "cold_wall_s"), True)
+        add("DX", "DX2 test suite (cache hangat)", "detik", "tabel DX2", R("DX2", "go", "warm_wall_s"), R("DX2", "swift", "warm_wall_s"), True)
         d3 = next((r for r in dx["recs"] if r.get("dx") == "DX3"), None)
         if d3:
-            sg, ss = stat([d3["go"]["loc_prod"]]), stat([d3["swift"]["loc_prod"]])
-            lines.append(("DX3 LOC", sentence("DX3 baris kode produksi", "deterministik", "tabel DX3", sg, ss, True, det=True, d=0)))
-            sg, ss = stat([d3["go"]["deps_transitive_module_graph"]]), stat([d3["swift"]["deps_transitive_packages"]])
-            lines.append(("DX3 deps", sentence("DX3 dependency transitif", "Go: graf modul; Swift: Package.resolved", "tabel DX3", sg, ss, True, det=True, d=0)))
-        lines.append(("DX5", sentence("DX5 onboarding (B1 dev)", "detik", "tabel DX5", R("DX5", "go", "b1_dev_s"), R("DX5", "swift", "b1_dev_s"), True, d=1)))
-    # --- startup dan image
+            add("DX", "DX3 baris kode produksi (deskriptif)", "deterministik", "tabel DX3", stat([d3["go"]["loc_prod"]]), stat([d3["swift"]["loc_prod"]]), True, det=True, d=0, word="lebih sedikit")
+            add("DX", "DX3 dependency transitif (deskriptif)", "Go: graf modul; Swift: Package.resolved", "tabel DX3", stat([d3["go"]["deps_transitive_module_graph"]]),
+                stat([d3["swift"]["deps_transitive_packages"]]), True, det=True, d=0, word="lebih sedikit")
+        add("DX", "DX5 onboarding (B1 dev)", "detik", "tabel DX5", R("DX5", "go", "b1_dev_s"), R("DX5", "swift", "b1_dev_s"), True, d=1)
     if st:
         rows = st["rows"]
-        fl0 = "distroless"
-        g = stat([r["startup_ms"] for r in rows if r["app"] == "go" and r["flavor"] == fl0])
-        s_ = stat([r["startup_ms"] for r in rows if r["app"] == "swift" and r["flavor"] == fl0])
-        lines.append(("Startup", sentence("Waktu start (distroless)", "ms; termasuk overhead Docker yang sama", "tabel S12", g, s_, True, d=0)))
+        g = stat([r["startup_ms"] for r in rows if r["app"] == "go" and r["flavor"] == "distroless"])
+        s_ = stat([r["startup_ms"] for r in rows if r["app"] == "swift" and r["flavor"] == "distroless"])
+        add("DX", "Waktu start (distroless)", "ms; termasuk overhead Docker yang sama", "tabel S12", g, s_, True, d=0)
         im = {(i["image"].split(":")[0], i["flavor"]): i for i in st["images"]["images"]}
-        a, b = im.get(("bench-go", fl0)), im.get(("bench-swift", fl0))
+        a, b = im.get(("bench-go", "distroless")), im.get(("bench-swift", "distroless"))
         if a and b:
-            lines.append(("Image", sentence("Ukuran image (distroless)", "MB, deterministik", "tabel S12", stat([a["image_bytes"]]), stat([b["image_bytes"]]), True, det=True, d=1, scale=1 / 1048576.0)))
-    # --- skala
-    for (sc, app, n), e in (scale or {}).items():
-        pass
+            add("DX", "Ukuran image (distroless; deskriptif)", "MB, deterministik", "tabel S12", stat([a["image_bytes"]]), stat([b["image_bytes"]]), True, det=True, d=1, scale=1 / 1048576.0, word="lebih kecil")
     for sc in ("s3", "s8"):
         for n in (2, 3):
             a, b = (scale or {}).get((sc, "go", n)), (scale or {}).get((sc, "swift", n))
             if a or b:
-                lines.append(("S14 %s %d core" % (sc, n), sentence("Efisiensi skala S14 %s pada %d core" % (sc.upper(), n), "RPS(n)/(n×RPS(1)); hanya 1–3 core", "tabel S14", a, b, False)))
+                add("SK", "Efisiensi skala S14 %s pada %d core" % (sc.upper(), n), "RPS(n)/(n×RPS(1)); hanya 1–3 core", "tabel S14", a, b, False)
     for sc in ("s3", "s8"):
         a, b = (sc2 or {}).get((sc, "go")), (sc2 or {}).get((sc, "swift"))
         if a and b:
-            lines.append(("SC2 mem", sentence("Kemiringan memori puncak per 100 VU %s" % sc.upper(), "MB per 100 VU", "tabel SC2", a["mem"], b["mem"], True, d=2)))
-    # --- M1
+            add("SK", "Kemiringan memori anon maks per 100 VU %s" % sc.upper(), "MB per 100 VU", "tabel SC2", a["mem"], b["mem"], True)
     slopes = (mod or {}).get("slopes", {})
     for kind in ("B2-leaf", "B3"):
         for topo in ("T1", "T2"):
             a, b = slopes.get(("go", kind, topo)), slopes.get(("swift", kind, topo))
             if a or b:
-                lines.append(("M1 %s %s" % (kind, topo), sentence("Kemiringan build %s topologi %s" % (kind, topo), "s per modul; kode sintetis", "tabel M1", a, b, True, d=3)))
-    verdict_lines = [t for _, (c, t) in lines]
-    decided = [(k, c, t) for k, (c, t) in lines if c in ("a", "b")]
+                add("SK", "Kemiringan build %s topologi %s" % (kind, topo), "s per modul; kode sintetis", "tabel M1", a, b, True, d=3)
+
+    decided = [(g, e) for g, e in items if e["code"] in ("a", "b")]
+    smoke_only = main_info.get("label", "").startswith("smoke")
     w("### Ringkasan")
     w()
-    n_dec = len(decided)
-    smoke_only = main_info.get("label", "").startswith("smoke")
-    w("**DX.** %s" % ("; ".join(t for k, c, t in decided if k.startswith(("DX", "Build", "Startup", "Image"))) or "Belum ada temuan DX yang lolos aturan (rentang tidak tumpang tindih dan selisih median > 5%). Metrik DX lain 'setara' atau 'belum cukup bukti' (lihat matriks)."))
+    dx_txt = "; ".join(e["sentence"] for g, e in decided if g == "DX")
+    sk_txt = "; ".join(e["sentence"] for g, e in decided if g == "SK")
+    w("**DX.** " + (dx_txt or "Belum ada temuan DX yang lolos aturan (rentang tidak tumpang tindih dan selisih median > 5%). Metrik DX lain 'setara' atau 'belum cukup bukti' (lihat matriks)."))
     w()
-    w("**Skalabilitas.** %s" % ("; ".join(t for k, c, t in decided if k.startswith(("S14", "SC2", "M1"))) or "Belum ada temuan skalabilitas yang lolos aturan (lihat matriks)."))
+    w("**Skalabilitas.** " + (sk_txt or "Belum ada temuan skalabilitas yang lolos aturan (lihat matriks)."))
     w()
     if smoke_only:
         w("_Catatan: data beban saat ini hanya smoke (1 ulangan); kesimpulan beban belum dapat ditarik._")
         w()
     w("### Matriks kriteria")
     w()
-    rows = []
-    for key, (code, text) in lines:
-        parts = text.split("→")
-        rows.append([key, text.split(": ", 1)[0], parts[0].split(": ", 1)[1].rsplit(", rasio", 1)[0] if ": " in parts[0] else "–", parts[1].split("[")[0].strip(" *") if len(parts) > 1 else text.split(": ", 1)[-1]])
-    md_table(["Kriteria", "Metrik (kondisi)", "Go / Swift (median [rentang])", "Hasil"], rows)
+    md_table(["Metrik", "Kondisi", "Go (median [rentang])", "Swift (median [rentang])", "Rasio Swift/Go [rentang]", "Hasil"], [e["row"] for _, e in items])
     w("### Rekomendasi arsitektur kondisional (monorepo satu modul vs banyak modul)")
     w()
     recs = (mod or {}).get("recs", [])
@@ -780,9 +818,8 @@ def section_conclusion(bi, st, dx, sc2, scale, mod, main_info):
                 code, txt = judge(t1, t2, True, name_a="T1", name_b="T2")
                 if code in ("a", "b"):
                     got_any = True
-                    r_ = ratio(t1, t2)
-                    w("- Untuk stack **%s** pada **N=%d modul**, %s membangun %s lebih cepat dibanding %s (median T1 %.2fs vs T2 %.2fs; rasio T2/T1 %s; rentang tidak tumpang tindih) [tabel M1]. Berlaku hanya untuk N yang diuji, dev, kode sintetis." % (
-                        stack, n, "T1" if code == "a" else "T2", kind, "T2" if code == "a" else "T1", t1["med"], t2["med"], fmt_ratio(r_)))
+                    w("- Untuk stack **%s** pada **N=%d modul**, %s membangun %s lebih cepat dibanding %s (median T1 %.2fs vs T2 %.2fs; rasio T2/T1 %s; rentang tidak tumpang tindih) [tabel M1]. Berlaku hanya untuk N yang diuji, konfigurasi dev, kode sintetis." % (
+                        stack, n, "T1" if code == "a" else "T2", kind, "T2" if code == "a" else "T1", t1["med"], t2["med"], fmt_ratio(ratio(t1, t2))))
     if not got_any:
         w("Belum ada rekomendasi yang didukung data (rentang tumpang tindih, selisih ≤ 5%, atau ulangan < 2 pada rentang N yang diuji).")
     w()

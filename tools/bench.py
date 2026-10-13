@@ -94,7 +94,7 @@ def collect_meta(ctx):
     meta = {
         "run_id": ctx.run_id, "label": "smoke, bukan final" if ctx.smoke else "benchmark",
         "scope": "Apple Silicon, Docker VM: hasil relatif, bukan absolut",
-        "mac_model": out("sysctl -n hw.model"), "sw_vers": out("sw_vers | tr '\\n' ' '"), "hw_ncpu": out("sysctl -n hw.ncpu"),
+        "mac_model": out("sysctl -n hw.model"), "sw_vers": out("sw_vers -productVersion") + " (" + out("sw_vers -buildVersion") + ")", "hw_ncpu": out("sysctl -n hw.ncpu"),
         "perf_cores": out("sysctl -n hw.perflevel0.physicalcpu"), "eff_cores": out("sysctl -n hw.perflevel1.physicalcpu"),
         "hw_memsize": out("sysctl -n hw.memsize"), "ulimit_n": out("ulimit -n"),
         "docker_version": out("docker version --format '{{.Server.Version}}'"),
@@ -123,17 +123,28 @@ def point_spec_A(ctx):
     return [dict(label="vu%d" % v, mode="vus", params={"VUS": v, "RAMP_S": P["ramp"], "STEADY_S": P["steady"]}, steady=P["steady"], ramp=P["ramp"]) for v in P["vus"]]
 
 
+def vus_for_rate(rate):
+    """VU pra-alokasi untuk constant-arrival-rate: konkurensi ~ laju x latensi (hukum Little); 1% laju, dibatasi 50..400."""
+    return int(min(400, max(50, rate * 0.01)))
+
+
 def point_spec_B(ctx, rates):
     P = ctx.P
     out = []
+    ramp = 1 if ctx.smoke else 2  # transien awal (alokasi VU + koneksi TCP baru) dikecualikan dari metrik steady
     for rate, frac in rates:
-        pre = max(50, int(rate * 0.05))
+        pre = vus_for_rate(rate)
         out.append(dict(label="rate%d" % rate, frac=frac, mode="rate",
-                        params={"RATE": rate, "DURATION_S": P["b_s"], "PRE_VUS": pre, "MAX_VUS": 600}, steady=P["b_s"], ramp=0))
+                        params={"RATE": rate, "DURATION_S": P["b_s"], "RAMP_S": ramp, "PRE_VUS": pre, "MAX_VUS": max(1000, pre * 3)},
+                        steady=P["b_s"] - ramp, ramp=ramp))
     return out
 
 
+K6_SCENARIO = {"s10": "s8", "s11": "s8"}  # S10 (soak) dan S11 (biaya logging) memakai campuran S8
+
+
 def execute_run(ctx, app, scenario, stage, repeat, specs, tag=None, env_over=None, extra=None):
+    k6_scen = K6_SCENARIO.get(scenario, scenario)
     env = dict(ctx.env)
     if env_over:
         env.update(env_over)
@@ -151,11 +162,11 @@ def execute_run(ctx, app, scenario, stage, repeat, specs, tag=None, env_over=Non
     ls0 = log_stats(app)
     points = []
     try:
-        w = run_k6(env, app, rd, "warmup", {"SCENARIO": scenario, "MODE": "warmup", "VUS": 32, "DURATION_S": ctx.P["warmup"]})
+        w = run_k6(env, app, rd, "warmup", {"SCENARIO": k6_scen, "MODE": "warmup", "VUS": 32, "DURATION_S": ctx.P["warmup"]})
         warm_reqs = int(w["metrics"]["http_reqs"]["count"] if "count" in w["metrics"]["http_reqs"] else w["metrics"]["http_reqs"]["values"]["count"])
         for spec in specs:
             for attempt in range(3):
-                params = dict(spec["params"], SCENARIO=scenario)
+                params = dict(spec["params"], SCENARIO=k6_scen)
                 pt = run_point(env, app, rd, spec["label"], spec["mode"], params, spec["steady"], spec["ramp"], ctx.slo)
                 if pt["valid"]:
                     break
@@ -261,7 +272,7 @@ def run_soak(ctx):
             specs = []
             for i in range(P["soak_segments"]):
                 specs.append(dict(label="seg%02d" % i, frac=0.7, mode="rate", steady=P["soak_seg"], ramp=0,
-                                  params={"RATE": rate, "DURATION_S": P["soak_seg"], "PRE_VUS": max(50, int(rate * 0.05)), "MAX_VUS": 600}))
+                                  params={"RATE": rate, "DURATION_S": P["soak_seg"], "PRE_VUS": vus_for_rate(rate), "MAX_VUS": max(1000, vus_for_rate(rate) * 3)}))
             execute_run(ctx, app, "s10", "SOAK", r, specs, extra={"soak": True})
 
 
@@ -280,7 +291,7 @@ def run_logcost(ctx):
 # ---------------------------------------------------------------- estimasi
 def estimate_seconds(ctx, scenarios):
     P = ctx.P
-    per_run_overhead = 25
+    per_run_overhead = 12
     kinit = 3
     a = per_run_overhead + P["warmup"] + sum(P["ramp"] + P["steady"] + kinit for _ in P["vus"])
     b = per_run_overhead + P["warmup"] + sum(P["b_s"] + kinit for _ in P["b_fracs"])
@@ -343,8 +354,9 @@ def main():
         run_scenarios(ctx, scenarios)
     elif a.cmd == "run":
         scenarios = parse_scenarios(a.scenarios or env.get("SCENARIO", "core"))
-        ctx = Ctx(env, "bench")
-        start(ctx, scenarios, "BENCH")
+        smoke = os.environ.get("BENCH_SMOKE") == "1"  # uji alur dengan durasi pendek; run diberi suffix -smoke
+        ctx = Ctx(env, "bench", smoke=smoke)
+        start(ctx, scenarios, "BENCH (smoke, bukan final)" if smoke else "BENCH")
         run_scenarios(ctx, scenarios)
     elif a.cmd in ("tuned", "scale"):
         import bench_variants

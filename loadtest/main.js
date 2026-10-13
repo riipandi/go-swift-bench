@@ -1,7 +1,7 @@
 // Entry k6: satu invokasi per titik ukur. Parameter lewat -e:
 //   SCENARIO=s1..s9 | s8 ; MODE=vus|rate|warmup ; BASE_URL ; SEED
 //   vus   : VUS, RAMP_S, STEADY_S    (constant-vus, closed-loop; submetric {phase:steady} setelah RAMP_S)
-//   rate  : RATE, DURATION_S, PRE_VUS, MAX_VUS  (constant-arrival-rate, open-loop)
+//   rate  : RATE, DURATION_S (total), RAMP_S (fase awal dikecualikan dari metrik steady), PRE_VUS, MAX_VUS  (constant-arrival-rate, open-loop)
 //   warmup: VUS, DURATION_S          (tidak dihitung)
 import { SharedArray } from 'k6/data';
 import { Gauge } from 'k6/metrics';
@@ -21,7 +21,7 @@ const SCEN = __ENV.SCENARIO || 's1';
 const MODE = __ENV.MODE || 'vus';
 const BASE = __ENV.BASE_URL || 'http://go-app:8080';
 const SEED = parseInt(__ENV.SEED || '20261013');
-const RAMP_S = parseInt(__ENV.RAMP_S || '10');
+const RAMP_S = parseInt(__ENV.RAMP_S || (__ENV.MODE === 'rate' ? '0' : '10'));
 const num = (k, d) => parseInt(__ENV[k] || String(d));
 
 const users = new SharedArray('users', () => JSON.parse(open('/loadtest/data/user_ids.json')));
@@ -64,6 +64,6 @@ export default function (data) {
   if (rng === null) rng = mulberry32(SEED + __VU * 7919);
   let phase = 'steady';
   if (MODE === 'warmup') phase = 'warmup';
-  else if (MODE === 'vus' && Date.now() - data.t0 < RAMP_S * 1000) phase = 'ramp';
+  else if ((MODE === 'vus' || MODE === 'rate') && Date.now() - data.t0 < RAMP_S * 1000) phase = 'ramp';
   SCENARIOS[SCEN].iteration({ base: BASE, rng: rng, phase: phase, data: { users: users, orders: orders, pending: pending } });
 }

@@ -269,9 +269,11 @@ def dx4():
                 open(fn, "w").write(header + raw)
                 base = os.path.basename(spec["file"])
                 located = bool(re.search(re.escape(base) + r":%d(:|\b)" % line_no, raw))
-                errs = [l for l in raw.splitlines() if "error" in l.lower()]
+                clean = re.sub(r"\x1b\[[0-9;]*m", "", raw)
+                diag = [l for l in clean.splitlines() if re.search(r":\d+:\d+: ", l)]
+                errs = [l for l in diag if "error:" in l] or [l for l in diag if "warning:" not in l] or diag
                 out.append({"dx": "DX4", "stack": stack, "mutation": name, "exit": r.returncode, "output_lines": len(raw.splitlines()),
-                            "points_to_correct_line": located, "mutated_line": line_no, "first_error": (errs[0][:300] if errs else None),
+                            "points_to_correct_line": located, "mutated_line": line_no, "first_error": (re.sub(r"^.*?/(src/)?", "", errs[0])[:300] if errs else None),
                             "file": os.path.relpath(fn, ROOT)})
                 log("  DX4 %-5s %-16s exit=%d baris-keluaran=%d lokasi-benar=%s" % (stack, name, r.returncode, len(raw.splitlines()), located))
         finally:

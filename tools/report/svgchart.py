@@ -124,19 +124,32 @@ def bar_chart(path, title, ylabel, groups, series_names, values, note=None):
 
 
 def to_png(svg_path):
-    """Konversi SVG -> PNG lewat qlmanage (macOS). Kembalikan path PNG atau None (SVG tetap dipertahankan)."""
-    if not shutil.which("qlmanage"):
+    """Konversi SVG -> PNG lewat qlmanage + sips (bawaan macOS). qlmanage selalu merender ke kanvas persegi, jadi salinan SVG diberi
+    kanvas persegi (konten di kiri-atas) lalu PNG dipotong sesuai ukuran konten. Kembalikan path PNG atau None (SVG tetap ada)."""
+    if not (shutil.which("qlmanage") and shutil.which("sips")):
         return None
     tmp = tempfile.mkdtemp()
     try:
-        subprocess.run(["qlmanage", "-t", "-s", "1200", "-o", tmp, svg_path], capture_output=True, timeout=60)
-        produced = os.path.join(tmp, os.path.basename(svg_path) + ".png")
-        if os.path.exists(produced):
-            dest = svg_path[:-4] + ".png"
-            shutil.move(produced, dest)
-            return dest
+        txt = open(svg_path).read()
+        scale = 2
+        head_old = 'width="%d" height="%d" viewBox="0 0 %d %d"' % (W, H, W, H)
+        off = (W - H) // 2
+        # kanvas persegi, konten di tengah vertikal; pemotongan sips berpusat mengembalikan tepat area konten
+        sq = txt.replace(head_old, 'width="%d" height="%d" viewBox="0 0 %d %d"' % (W, W, W, W), 1)
+        i = sq.index(">") + 1
+        sq = sq[:i] + '<rect width="%d" height="%d" fill="#fff"/><g transform="translate(0,%d)">' % (W, W, off) + sq[i:]
+        sq = sq[: sq.rindex("</svg>")] + "</g></svg>"
+        src = os.path.join(tmp, "chart.svg")
+        open(src, "w").write(sq)
+        subprocess.run(["qlmanage", "-t", "-s", str(W * scale), "-o", tmp, src], capture_output=True, timeout=60)
+        produced = os.path.join(tmp, "chart.svg.png")
+        if not os.path.exists(produced):
+            return None
+        subprocess.run(["sips", "-c", str(H * scale), str(W * scale), produced], capture_output=True, timeout=60)
+        dest = svg_path[:-4] + ".png"
+        shutil.move(produced, dest)
+        return dest
     except Exception:
-        pass
+        return None
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    return None

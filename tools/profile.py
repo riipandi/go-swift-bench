@@ -76,8 +76,12 @@ def top_go(pb, n=10):
     return rows[:n], r.stdout.split("\n\n")[0][:600]
 
 
+WAIT_FUNCS = {"__psynch_cvwait", "__workq_kernreturn", "mach_msg2_trap", "mach_msg_trap", "start_wqthread", "__psynch_mutexwait",
+              "kevent", "__select", "__semwait_signal", "__ulock_wait", "__ulock_wait2", "_pthread_wqthread", "thread_start", "_pthread_start"}
+
+
 def top_sample(path, n=10):
-    """Bagian 'Sort by top of stack' dari keluaran macOS sample."""
+    """Bagian 'Sort by top of stack' dari macOS sample: (mentah n teratas, n teratas tanpa primitif tunggu thread idle)."""
     txt = open(path, errors="replace").read()
     i = txt.find("Sort by top of stack")
     rows = []
@@ -86,10 +90,8 @@ def top_sample(path, n=10):
             m = re.match(r"\s+(\S.*?)\s{2,}\(in ([^)]+)\)\s+(\d+)\s*$", line)
             if m:
                 rows.append({"name": m.group(1), "image": m.group(2), "samples": int(m.group(3))})
-            if len(rows) >= n:
-                break
-    total = sum(r["samples"] for r in rows) or 1
-    return rows
+    active = [r for r in rows if r["name"] not in WAIT_FUNCS]
+    return rows[:n], active[:n]
 
 
 def main():
@@ -121,8 +123,8 @@ def main():
         sh_env = {"SCENARIO": scenario, "MODE": "warmup", "VUS": 32, "DURATION_S": 10, "BASE_URL": base}
         os.makedirs(os.path.join(out_dir, "k6"), exist_ok=True)
         _run_k6_host(env, out_dir, "warmup", sh_env)
-        k6_params = {"SCENARIO": scenario, "MODE": "rate", "RATE": rate, "DURATION_S": duration + 14, "PRE_VUS": max(50, int(rate * 0.05)),
-                     "MAX_VUS": 600, "BASE_URL": base}
+        k6_params = {"SCENARIO": scenario, "MODE": "rate", "RATE": rate, "DURATION_S": duration + 14, "PRE_VUS": int(min(400, max(50, rate * 0.01))),
+                     "MAX_VUS": 1500, "BASE_URL": base}
         import threading
         res = {}
         t = threading.Thread(target=lambda: res.setdefault("k6", _run_k6_host(env, out_dir, "profile_load", k6_params)))
@@ -177,8 +179,9 @@ def main():
             shutil.copyfileobj(fi, fo)
         summary["pgo_exported"] = "go-app/pgo/default.pgo (dipakai varian tuned S13 lewat GO_PGO=1)"
     else:
-        rows = top_sample(os.path.join(out_dir, "sample.txt"))
-        summary.update(top10=rows, top10_source="macOS sample: 'Sort by top of stack'",
+        rows, active = top_sample(os.path.join(out_dir, "sample.txt"))
+        summary.update(top10=rows, top10_excluding_wait=active, wait_functions_filtered=sorted(WAIT_FUNCS),
+                       top10_source="macOS sample: 'Sort by top of stack' (semua thread, termasuk thread idle)",
                        xctrace=os.path.exists(os.path.join(out_dir, "timeprofiler.trace")))
     json.dump(summary, open(os.path.join(out_dir, "top10.json"), "w"), indent=1)
     log("selesai: %s" % out_dir)

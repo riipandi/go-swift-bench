@@ -74,7 +74,7 @@ import (
 	"net/http"
 	"strings"
 
-	"synth/core"
+	"example.test/synth/core"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -148,7 +148,7 @@ func helper%(k)d(x int) int {
 	}
 	return core.Clamp(y, 0, %(c)d)
 }
-''' % {"k": k, "m": i + k + 3, "c": 100 * (k + 1)} for k in range(3))
+''' % {"k": k, "m": i + k + 3, "c": 100 * (k + 1)} for k in range(6))
     return body + extra
 
 
@@ -158,7 +158,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"synth/core"
+	"example.test/synth/core"
 %(imports)s
 	"github.com/go-chi/chi/v5"
 )
@@ -178,14 +178,14 @@ def gen_go(topo, n, dest, root):
     go_sum = open(os.path.join(root, "go-app", "go.sum")).read()
     go_ver = "1.27.2"
     mods = [pad(i) for i in range(1, n + 1)]
-    imports = "".join('\t"synth/mod%s"\n' % m for m in mods)
+    imports = "".join('\t"example.test/synth/mod%s"\n' % m for m in mods)
     routes = "".join("\tmod%s.Routes(r)\n" % m for m in mods)
     main_src = GO_MAIN_HEAD % {"imports": imports, "routes": routes}
     info = {"stack": "go", "topology": topo, "n": n}
     if topo == "T1":
         os.makedirs(os.path.join(dest, "cmd", "app"), exist_ok=True)
         os.makedirs(os.path.join(dest, "core"))
-        open(os.path.join(dest, "go.mod"), "w").write("module synth\n\ngo %s\n\nrequire %s\n" % (go_ver, chi_req))
+        open(os.path.join(dest, "go.mod"), "w").write("module example.test/synth\n\ngo %s\n\nrequire %s\n" % (go_ver, chi_req))
         open(os.path.join(dest, "go.sum"), "w").write(go_sum)
         open(os.path.join(dest, "core", "core.go"), "w").write(GO_CORE)
         for i in range(1, n + 1):
@@ -195,17 +195,19 @@ def gen_go(topo, n, dest, root):
         info.update(cwd=dest, build=["go", "build", "-o", "{out}", "./cmd/app"], core_file=os.path.join(dest, "core", "core.go"),
                     leaf_file=os.path.join(dest, "mod" + pad(n), "mod.go"))
     else:
-        def write_mod(path, modpath, requires, replace_core=False):
+        def write_mod(path, modpath, requires):
             os.makedirs(path, exist_ok=True)
             req = "".join("\t%s v0.0.0\n" % r for r in requires)
-            open(os.path.join(path, "go.mod"), "w").write("module %s\n\ngo %s\n\nrequire (\n%s\t%s\n)\n" % (modpath, go_ver, req, chi_req))
+            # replace ke direktori lokal (modul belum diterbitkan); tetap dikelola lewat go.work
+            rep = "".join("replace %s => ../%s\n" % (r, r.rsplit("/", 1)[1]) for r in requires)
+            open(os.path.join(path, "go.mod"), "w").write("module %s\n\ngo %s\n\nrequire (\n%s\t%s\n)\n\n%s" % (modpath, go_ver, req, chi_req, rep))
             open(os.path.join(path, "go.sum"), "w").write(go_sum)
-        write_mod(os.path.join(dest, "core"), "synth/core", [])
+        write_mod(os.path.join(dest, "core"), "example.test/synth/core", [])
         open(os.path.join(dest, "core", "core.go"), "w").write(GO_CORE)
         for i in range(1, n + 1):
-            write_mod(os.path.join(dest, "mod" + pad(i)), "synth/mod" + pad(i), ["synth/core"])
+            write_mod(os.path.join(dest, "mod" + pad(i)), "example.test/synth/mod" + pad(i), ["example.test/synth/core"])
             open(os.path.join(dest, "mod" + pad(i), "mod.go"), "w").write(go_mod_file(i))
-        write_mod(os.path.join(dest, "app"), "synth/app", ["synth/core"] + ["synth/mod" + m for m in mods])
+        write_mod(os.path.join(dest, "app"), "example.test/synth/app", ["example.test/synth/core"] + ["example.test/synth/mod" + m for m in mods])
         open(os.path.join(dest, "app", "main.go"), "w").write(main_src)
         uses = "".join("\t./mod%s\n" % m for m in mods)
         open(os.path.join(dest, "go.work"), "w").write("go %s\n\nuse (\n\t./core\n\t./app\n%s)\n" % (go_ver, uses))
@@ -290,7 +292,7 @@ func helper%(n)s_%(k)d(_ x: Int) -> Int {
     if y %% 2 == 0 { return y / 2 }
     return Core.clamp(y, 0, %(c)d)
 }
-''' % {"n": n, "k": k, "m": i + k + 3, "c": 100 * (k + 1)} for k in range(3))
+''' % {"n": n, "k": k, "m": i + k + 3, "c": 100 * (k + 1)} for k in range(6))
     return body + extra
 
 

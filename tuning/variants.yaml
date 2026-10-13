@@ -1,0 +1,74 @@
+# Varian TUNED (S13). Maksimal tiga perubahan per stack. Konfigurasi default TIDAK berubah.
+# Aktif hanya lewat VARIANT=tuned -> docker-compose.tuned.yml (+ nilai turunan di tools/dc.sh).
+# Bukti verifikasi dikumpulkan oleh `python3 tools/tuning_verify.py` -> results/raw/tuning_evidence.json (nilai runtime nyata,
+# bukan tebakan). Dilaporkan terpisah dari default; kesimpulan utama hanya dari default.
+verified_on: "2026-10-13"
+toolchain: {go: "1.27.2", swift: "6.4.0", vapor: "4.122.2", fluent: "4.13.0", fluent_postgres_driver: "2.14.0"}
+
+go:
+  - id: go-1-gomemlimit
+    change: "GOMEMLIMIT=819MiB (80% dari batas memori container 1 GiB di profil mac-m2; dihitung dari APP_MEM)"
+    reason: "Batas memori lunak: GC bekerja lebih agresif hanya mendekati batas, sehingga GOGC yang lebih tinggi aman terhadap OOM."
+    source: "https://go.dev/doc/gc-guide (HTTP 200 diverifikasi 2026-10-13)"
+    padanan_swift: "tidak ada (ARC, tanpa GC)"
+    evidence:
+      default: {"/gc/gomemlimit:bytes": 9223372036854775807}
+      tuned: {"/gc/gomemlimit:bytes": 858783744}
+      how: "runtime/metrics di port admin 6060 pada container default vs tuned"
+    status: verified
+  - id: go-2-gogc
+    change: "GOGC=400 (default 100)"
+    reason: "Menukar memori dengan GC yang lebih jarang: heap hidup kecil (~3 MB) sehingga default memicu ratusan siklus GC per detik (terukur di go_runtime.gc_cycles_delta pada hasil run)."
+    source: "https://go.dev/doc/gc-guide (HTTP 200 diverifikasi 2026-10-13)"
+    padanan_swift: "tidak ada"
+    evidence:
+      default: {"/gc/gogc:percent": 100}
+      tuned: {"/gc/gogc:percent": 400}
+      how: "runtime/metrics di port admin 6060"
+    status: verified
+  - id: go-3-pgo
+    change: "Profile-guided optimization: go build -pgo=pgo/default.pgo (profil CPU dari `make profile APP=go SCENARIO=s8`)"
+    reason: "Optimasi compiler (inlining/devirtualisasi) berbasis profil beban S8 nyata."
+    source: "https://go.dev/doc/pgo (HTTP 200 diverifikasi 2026-10-13)"
+    padanan_swift: "flag compiler tambahan (swift-2) sebagai optimasi tingkat compiler"
+    evidence:
+      default_binary_build_info: ["build -trimpath=true", "build CGO_ENABLED=0"]
+      tuned_binary_build_info: ["build -pgo=default.pgo", "build -trimpath=true", "build CGO_ENABLED=0"]
+      profile_file: {path: "go-app/pgo/default.pgo", bytes: 29819, source: "results/profiles/go/s8/cpu.pb.gz"}
+      how: "go version -m pada binary yang disalin dari image default dan tuned"
+    caveat: "Profil berasal dari proses native macOS (arm64), dipakai untuk build Linux arm64; nama fungsi sama sehingga profil tetap berlaku."
+    status: verified
+
+swift:
+  - id: swift-1-event-loops
+    change: "Jumlah event loop 2x CPU (4 untuk 2 CPU) dibanding 1x CPU; total pool koneksi tetap 16 (4 per event loop)"
+    reason: "Menguji apakah event loop tambahan mengurangi antrean saat saturasi (CPU container tetap 2, jadi thread > core)."
+    source: "SwiftNIO MultiThreadedEventLoopGroup(numberOfThreads:) dan Vapor Application.make(_:.shared(group)); perilaku diverifikasi dari log startup, dokumentasi online tidak dibuka sesi ini (dari pengetahuan umum)"
+    padanan_go: "GOMAXPROCS tetap = CPU pada kedua varian; Go tidak punya padanan langsung (goroutine di-multiplex)"
+    evidence:
+      default: {event_loops: 2, pool_per_loop: 8, db_pool_total: 16}
+      tuned: {event_loops: 4, pool_per_loop: 4, db_pool_total: 16}
+      how: "baris log startup 'server starting' dari container default vs tuned"
+    status: verified
+  - id: swift-2-cmo
+    change: "swift build ... -Xswiftc -cross-module-optimization (SWIFT_EXTRA_FLAGS)"
+    reason: "Optimasi lintas modul (serialisasi tambahan SIL) untuk code path Vapor/Fluent/NIO; TIDAK menghapus pemeriksaan keamanan (bukan -Ounchecked)."
+    source: "Keluaran `swiftc -frontend -help-hidden` pada Swift 6.4 (flag terdaftar, opsi tersembunyi). Dokumentasi online tidak terverifikasi (URL docs/CrossModuleOptimization.md di GitHub mengembalikan 404 pada 2026-10-13): label 'dari pengetahuan umum'."
+    padanan_go: "PGO (go-3-pgo): optimasi tingkat compiler"
+    evidence:
+      compiler_help: ["-cross-module-optimization", "-enable-cmo-everything  Perform cross-module optimization on everything (all APIs)..."]
+      image_built: "bench-swift:distroless-tuned (131.6 MB; default 128.8 MB) berhasil dibangun dan dijalankan"
+    caveat: "Efek pada kecepatan hanya dibuktikan lewat S13; apakah SwiftPM release sudah mengaktifkan CMO default tidak diverifikasi."
+    status: verified_available_docs_unverified
+
+dropped:
+  - id: swift-x-lto
+    change: "-Xswiftc -lto=llvm-thin"
+    reason_dropped: "Diuji pada 2026-10-13: link gagal di image Linux (ld.lld: undefined symbol untuk Swift Concurrency/Dispatch dengan --static-swift-stdlib). Tidak terbukti bekerja pada konfigurasi build ini."
+  - id: swift-x-ounchecked
+    change: "-Ounchecked"
+    reason_dropped: "Dilarang: mematikan pemeriksaan keamanan runtime."
+
+pool_sweep:
+  note: "Bukan bagian dari tuned: sapuan ukuran pool koneksi total 8, 16, 32, 64 (sama untuk kedua stack; default variant) pada S3 dan S8 tahap A. Swift: pool per event loop = total / 2."
+  values: [8, 16, 32, 64]

@@ -307,7 +307,9 @@ def main():
     out_dir = os.path.join(ROOT, "results", "raw", "contract")
     os.makedirs(out_dir, exist_ok=True)
     summary["failures"] = failures
-    json.dump(summary, open(os.path.join(out_dir, "summary.json"), "w"), indent=1)
+    json.dump(summary, open(os.path.join(out_dir, "summary-%s.json" % env["IMAGE_FLAVOR"]), "w"), indent=1)
+    if env["IMAGE_FLAVOR"] == "distroless":  # ringkasan default yang dipakai laporan
+        json.dump(summary, open(os.path.join(out_dir, "summary.json"), "w"), indent=1)
     if failures:
         log("\nCONTRACT GAGAL (%d masalah)" % len(failures))
         return 1

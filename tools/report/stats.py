@@ -40,7 +40,7 @@ def fmt_ratio(r, d=2):
     return "%s× [%s–%s]" % (f % r["med"], f % r["lo"], f % r["hi"])
 
 
-def judge(sa, sb, lower_better, deterministic=False, thresh=0.05, name_a="Go", name_b="Swift"):
+def judge(sa, sb, lower_better, deterministic=False, thresh=0.05, name_a="Go", name_b="Swift", word="lebih baik"):
     """Aturan: lebih baik hanya bila rentang min-maks tidak tumpang tindih DAN selisih median > 5%.
     Kurang dari 2 ulangan (kecuali metrik deterministik): 'belum cukup bukti'. Selain itu: 'setara'.
     Kembalikan (kode, teks): kode in {'a','b','setara','belum'}."""
@@ -54,7 +54,7 @@ def judge(sa, sb, lower_better, deterministic=False, thresh=0.05, name_a="Go", n
     if overlap or diff <= thresh:
         return "setara", "setara (rentang tumpang tindih atau selisih median ≤ 5%)"
     a_better = (sa["med"] < sb["med"]) if lower_better else (sa["med"] > sb["med"])
-    return ("a" if a_better else "b"), "%s lebih baik (rentang tidak tumpang tindih, selisih median %.0f%%)" % (name_a if a_better else name_b, diff * 100)
+    return ("a" if a_better else "b"), "%s %s (rentang tidak tumpang tindih, selisih median %.0f%%)" % (name_a if a_better else name_b, word, diff * 100)
 
 
 def slope(xs, ys):

@@ -23,7 +23,7 @@ def run_tuned(env, bench):
     e = dict(env, VARIANT="tuned")
     ctx = bench.Ctx(e, "tuned", smoke=SMOKE)
     P = ctx.P
-    kinit, ov = 3, 25
+    kinit, ov = 3, 12
     a = ov + P["warmup"] + sum(P["ramp"] + P["steady"] + kinit for _ in P["vus"])
     b = ov + P["warmup"] + sum(P["b_s"] + kinit for _ in P["b_fracs"])
     est = ctx.repeats * len(ctx.apps) * (len(TUNED_SCENARIOS) * (a + b) + len(SWEEP_SCENARIOS) * len(POOLS) * a)
@@ -59,7 +59,7 @@ def run_scale(env, bench):
     cpus = [int(x) for x in env.get("SCALE_CPUS", "1,2,3").split(",")]
     ctx = bench.Ctx(env, "scale", smoke=SMOKE)
     P = ctx.P
-    kinit, ov = 3, 25
+    kinit, ov = 3, 12
     a = ov + P["warmup"] + sum(P["ramp"] + P["steady"] + kinit for _ in P["vus"])
     est = ctx.repeats * len(ctx.apps) * len(cpus) * 2 * a
     log("S14 skala vertikal | run-id %s | CPU=%s | apps=%s repeats=%d" % (ctx.run_id, cpus, ",".join(ctx.apps), ctx.repeats))

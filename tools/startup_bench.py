@@ -47,10 +47,14 @@ def image_facts(env, app, flavor):
             "binary_bytes": size, "user": info["Config"]["User"], "arch": info["Architecture"], "id": info["Id"]}
 
 
-def mem_current(cid):
-    r = sh(["docker", "run", "--rm", "--cgroupns", "host", "--entrypoint", "cat", SAMPLER_IMAGE,
-            "/sys/fs/cgroup/docker/%s/memory.current" % cid])
-    return int(r.stdout.strip())
+def mem_stats(cid):
+    """memory.current (termasuk page cache berkas) dan anon (memori proses) dari cgroup container."""
+    base = "/sys/fs/cgroup/docker/%s" % cid
+    r = sh(["docker", "run", "--rm", "--cgroupns", "host", "--entrypoint", "sh", SAMPLER_IMAGE, "-c",
+            "cat %s/memory.current; grep -E '^(anon|file) ' %s/memory.stat" % (base, base)])
+    lines = r.stdout.split("\n")
+    st = {l.split()[0]: int(l.split()[1]) for l in lines[1:] if l.strip()}
+    return {"current": int(lines[0]), "anon": st.get("anon"), "file": st.get("file")}
 
 
 def one_start(env, app, flavor):
@@ -73,15 +77,16 @@ def one_start(env, app, flavor):
     # memori 5 detik setelah siap (VM clock via probe now)
     while int(probe(["now"])) < t_ready + 5 * 10 ** 9:
         time.sleep(0.05)
-    mem5 = mem_current(info["Id"])
+    mem5 = mem_stats(info["Id"])
     burst = json.loads(probe(["burst", "--base", url, "--n", "100"]))
     time.sleep(0.5)
-    mem100 = mem_current(info["Id"])
+    mem100 = mem_stats(info["Id"])
     return {"startup_ms": (ok["first_ok_ns"] - created_ns) / 1e6, "start_to_ok_ms": (ok["first_ok_ns"] - started_ns) / 1e6,
             "create_to_start_ms": (started_ns - created_ns) / 1e6, "poll_attempts": ok["attempts"],
             "first_request_us": {k[:-3]: v for k, v in first.items() if k.endswith("_us")},
             "first_request_status": {k[:-7]: v for k, v in first.items() if k.endswith("_status")},
-            "mem_5s_after_ready_bytes": mem5, "mem_after_100_requests_bytes": mem100, "burst_bad": burst["bad"]}
+            "mem_5s_after_ready_bytes": mem5["current"], "mem_after_100_requests_bytes": mem100["current"],
+            "mem_5s_anon_bytes": mem5["anon"], "mem_after_100_anon_bytes": mem100["anon"], "burst_bad": burst["bad"]}
 
 
 def main():
@@ -113,9 +118,10 @@ def main():
                 r = one_start(e, app, flavor)
                 r.update({"app": app, "flavor": flavor, "repeat": i})
                 rows.append(r)
-                log("  r%02d start=%.0fms first S1/S3/S4/S6 = %s ms mem5s=%.1fMB mem100=%.1fMB" % (
+                log("  r%02d start=%.0fms first S1/S3/S4/S6 = %s ms mem5s=%.1fMB(anon %.1f) mem100=%.1fMB(anon %.1f)" % (
                     i, r["startup_ms"], "/".join("%.1f" % (r["first_request_us"].get(k, -1) / 1000) for k in ("S1", "S3", "S4", "S6")),
-                    r["mem_5s_after_ready_bytes"] / 1048576, r["mem_after_100_requests_bytes"] / 1048576))
+                    r["mem_5s_after_ready_bytes"] / 1048576, r["mem_5s_anon_bytes"] / 1048576,
+                    r["mem_after_100_requests_bytes"] / 1048576, r["mem_after_100_anon_bytes"] / 1048576))
     stop_apps(env)
     json.dump({"images": facts, "skipped": skipped, "note": "waktu start mencakup overhead Docker yang sama untuk kedua stack",
                "image_note": "ukuran dari docker image inspect; binary disalin dari image",

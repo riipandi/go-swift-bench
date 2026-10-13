@@ -260,7 +260,11 @@ def verify_toolchain():
         r = subprocess.run(["swift", "build", "-c", "release", "--static-swift-stdlib", "--scratch-path", os.path.join(tmp, "s"),
                             "--cache-path", os.path.join(tmp, "c"), "--config-path", os.path.join(tmp, "cf"), "--security-path", os.path.join(tmp, "sec")],
                            cwd=tmp, capture_output=True, text=True)
-        ev["static_swift_stdlib_on_macos"] = {"supported": r.returncode == 0, "output_tail": (r.stdout + r.stderr)[-300:]}
+        out_txt = r.stdout + r.stderr
+        # exit 0 saja tidak cukup: macOS menerima flag tetapi compiler memperingatkan 'no longer supports statically linking'
+        unsupported = "no longer supports statically linking" in out_txt
+        ev["static_swift_stdlib_on_macos"] = {"supported": r.returncode == 0 and not unsupported, "flag_accepted_exit0": r.returncode == 0,
+                                              "warning_no_longer_supports_static": unsupported, "output_tail": out_txt[-300:]}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return ev

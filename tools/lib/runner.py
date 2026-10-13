@@ -227,6 +227,9 @@ def app_resource_stats(samp, lo, hi):
         "mem_max_mb": mb(max(r["mem_current"] for r in w)),
         "mem_peak_mb": mb(w[-1]["mem_peak"]),
         "mem_anon_mb": mb(w[-1]["mem_anon"]), "mem_file_mb": mb(w[-1]["mem_file"]),
+        # anon = memori privat proses (stabil); memory.peak/current ikut menghitung page cache berkas yang dibebankan ke cgroup
+        # pertama yang menyentuhnya, sehingga tidak deterministik antar run.
+        "mem_anon_max_mb": mb(max(r["mem_anon"] for r in w)), "mem_anon_avg_mb": mb(statistics.mean(r["mem_anon"] for r in w)),
         "threads_max": max(r["threads"] for r in w), "fds_max": max(r["fds"] for r in w), "pids_max": max(r["pids"] for r in w),
         "ctx_vol_per_s": (w[-1]["vol_cs"] - w[0]["vol_cs"]) / dt, "ctx_nonvol_per_s": (w[-1]["nonvol_cs"] - w[0]["nonvol_cs"]) / dt,
         "net_rx_bps": (w[-1]["net_rx"] - w[0]["net_rx"]) / dt, "net_tx_bps": (w[-1]["net_tx"] - w[0]["net_tx"]) / dt,
@@ -289,11 +292,10 @@ def run_point(env, app, run_dir, label, mode, params, steady_s, ramp_s, slo_ms, 
     rt1 = go_runtime() if app == "go" else None
     calls1 = pg_calls_total()
     kn = k6_numbers(summary)
+    if kn["req_steady"] <= 0:
+        raise RuntimeError("k6 tidak menghasilkan request pada fase steady (periksa skenario/skrip k6): %s" % label)
     t0 = kn["t0_ms"]
-    if mode == "vus":
-        lo, hi = t0 + ramp_s * 1000 + 700, t0 + (ramp_s + steady_s) * 1000 - 300
-    else:
-        lo, hi = t0 + 1000, t0 + steady_s * 1000 - 300
+    lo, hi = t0 + ramp_s * 1000 + 700, t0 + (ramp_s + steady_s) * 1000 - 300
     samp = load_sampler(run_dir)
     res = app_resource_stats(samp, lo, hi) or {}
     pgc = cpu_stats(samp.get("pg", []), lo, hi) or {}
@@ -309,6 +311,8 @@ def run_point(env, app, run_dir, label, mode, params, steady_s, ramp_s, slo_ms, 
         flags.append("thermal_throttled")
     if not res:
         flags.append("no_cgroup_data")
+    if mode == "vus" and res and res["cpu_cores"] / float(env["APP_CPUS"]) < 0.85:
+        flags.append("app_not_saturated")  # informatif: pembatas throughput bukan CPU aplikasi (k6, DB, atau VM)
     pg_util = (pgc.get("cores", 0.0) / float(env["PG_CPUS"])) if pgc else 0.0
     if pg_util >= 0.9:
         flags.append("db_bound")
@@ -321,6 +325,7 @@ def run_point(env, app, run_dir, label, mode, params, steady_s, ramp_s, slo_ms, 
         "cpu_ms_per_req": (res["cpu_ms"] / max(1, kn["req_steady"])) if res else None,
         "rps_per_core": (rps / res["cpu_cores"]) if res and res["cpu_cores"] > 0 else None,
         "rps_per_gb_peak": (rps / (res["mem_peak_mb"] / 1024.0)) if res and res["mem_peak_mb"] > 0 else None,
+        "rps_per_gb_anon": (rps / (res["mem_anon_max_mb"] / 1024.0)) if res and res["mem_anon_max_mb"] > 0 else None,
         "pg_cores": pgc.get("cores"), "pg_util": pg_util, "pg_cores_max_1s": max(pg_sec) if pg_sec else None,
         "k6_cores": k6c.get("cores"), "k6_util": k6_util,
         "queries_total": calls1 - calls0, "queries_per_req": (calls1 - calls0) / max(1, kn["req_total"]),

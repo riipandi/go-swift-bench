@@ -18,12 +18,12 @@ public struct Dependencies: Sendable {
 struct ErrorBody: Content { var error: String }
 struct StatusBody: Content { var status: String }
 
-extension Domain.User: @retroactive Content {}
-extension Domain.Order: @retroactive Content {}
-extension Domain.UserWithOrders: @retroactive Content {}
-extension Domain.PayResult: @retroactive Content {}
-extension Domain.EchoRequest: @retroactive Content {}
-extension Domain.BenchPayload: @retroactive Content {}
+extension Domain.User: Content {}
+extension Domain.Order: Content {}
+extension Domain.UserWithOrders: Content {}
+extension Domain.PayResult: Content {}
+extension Domain.EchoRequest: Content {}
+extension Domain.BenchPayload: Content {}
 
 /// Encode memakai ContentConfiguration.global (Foundation JSONEncoder lewat Vapor Content).
 func jsonResponse<T: Encodable>(_ value: T, status: HTTPResponseStatus = .ok) throws -> Response {
